@@ -1,0 +1,111 @@
+---
+title: "Applied DRA with sdcMicro Draft"
+author: "Shaina Trevino"
+date: "1/19/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(sdcMicro)
+```
+
+## Import Data
+
+Chose variables, clean data (filter year, aggregate schools), random subsample, simulate data, export for use
+
+randomly simulated, similar descriptives/distributions, correlations are not maintained. 
+
+```{r import}
+sim_df <- rio::import(here::here("data", "sim_df.csv")) %>% 
+  mutate_if(is.character, as.factor)
+#need to deal with missing data for characters/factors that are blank now
+
+summary(sim_df)
+psych::describe(sim_df)
+```
+
+## Understanding Data and Context
+
+## Selecting Key Variables
+
+- different scenarios
+- run many times with different keys and see which variables are leading to most risk (e.g., most suppression, most unique keys)
+
+## Assessing Risk
+
+Make sure there are similar unique cases/riskiness in simulated data
+
+###Categorical Variables
+
+#### Sample Frequencies/Uniqueness
+
+move info from below here
+
+```{r samp-freq}
+#vector of categorical variable names
+catvars <- sim_df %>% 
+  select_if(is.factor) %>% 
+  colnames()
+#dataset with only categorical variables
+catdf <- sim_df %>% 
+  select_if(is.factor)
+
+#sdcMicro function
+freq_keys <- freqCalc(sim_df, keyVars = catvars) #creates sdcMicro object
+
+
+#number of unique rows
+freq_keys$n1
+#number of rows with freq = 2
+freq_keys$n2
+#frequency counts for each row
+counts <- freq_keys$fk
+#combine dataframe with frequencies counts for each row
+freq_counts <- cbind(sim_df, counts)
+head(freq_counts[, c(colnames(sim_df), "counts")])
+
+#aggregate to get frequencies for each key/combination
+agg_counts <- aggregate(counts ~ ., catdf, mean)
+nrow(agg_counts) #number of possible keys/combinations
+
+sum(agg_counts$counts == 1) #unique keys/combinations
+
+sum(agg_counts$counts == 2) #keys/combinations with freq = 2
+
+##above is same info in different ways (maybe dont need aggregate unless youw ant to know number of possible keys - can get another way I am sure)
+
+```
+
+
+#### K-anon violations
+how is it different from above (switch section)
+```{r k-anon-vio}
+#vio k-anon violations
+freq_keys
+```
+
+
+#### Individual Risk
+
+```{r ind-risk}
+
+
+##INDIVIDUAL RISK CALCULATION 
+indivf <- indivRisk(freq_keys)
+inriskvec <- indivf$rk
+
+freq_risk <- cbind(freq_counts, inriskvec) #- higher is worse. 1 = unique? indiv risk based on counts 15 = .066 risk
+
+```
+
+#### Global Risk
+
+f(k) frequency count of each key
+
+```{r first-risk}
+#need sdc object
+#fk <- 
+```
+
