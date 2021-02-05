@@ -1,5 +1,5 @@
 ---
-title: "Applied DRA with sdcMicro Draft"
+title: "Applied DRA and Control with sdcMicro Draft"
 author: "Shaina Trevino"
 date: "1/19/2021"
 output: html_document
@@ -11,13 +11,24 @@ library(tidyverse)
 library(sdcMicro)
 ```
 
+need to make report style - with very small explained code chunks - view report templates
+
+#Overview
+
+DRA & SDC
+
+purpose, steps (DRA, SDC, reasses), explanation of data
+
+# Preprocessing
+
+
 ## Import Data
 
 Chose variables, clean data (filter year, aggregate schools), random subsample, simulate data, export for use
 
 randomly simulated, similar descriptives/distributions, correlations are not maintained. 
 
-```{r import}
+```{r import, include = FALSE}
 sim_df <- rio::import(here::here("data", "sim_df.csv")) %>% 
   mutate_if(is.character, as.factor)
 #need to deal with missing data for characters/factors that are blank now
@@ -33,13 +44,17 @@ psych::describe(sim_df)
 - different scenarios
 - run many times with different keys and see which variables are leading to most risk (e.g., most suppression, most unique keys)
 
-## Assessing Risk
+# Disclosure Risk Assessment
+
+explain DRA (cont and cat differences) 
+
+assessing risk
 
 Make sure there are similar unique cases/riskiness in simulated data
 
-###Categorical Variables
+##Categorical Variables
 
-#### K-anon violations
+### K-anon violations
 how is it different from below (switch section)
 ```{r k-anon-vio}
 #vio k-anon violations
@@ -47,7 +62,7 @@ freq_keys
 
 ```
 
-#### Sample Frequencies/Uniqueness
+### Sample Frequencies/Uniqueness
 
 - include table that shows relation of k-anon and individual risk %
 
@@ -100,7 +115,7 @@ use this: https://sdcpractice.readthedocs.io/en/latest/measure_risk.html#count-o
 
 
 
-#### Individual Risk
+### Individual Risk
 
 ```{r ind-risk}
 
@@ -113,7 +128,7 @@ freq_risk <- cbind(freq_counts, inriskvec) #- higher is worse. 1 = unique? indiv
 
 ```
 
-#### Global Risk
+### Global Risk
 
 f(k) frequency count of each key
 
@@ -130,29 +145,61 @@ glrisk <- mean(inriskvec)
 glrisk
 ```
 
-### Continuous Variables
+## Continuous Variables
 
 most often looked at after anonymization and compared. 
 
-uniqueness does not apply - distnace/neighbor based measures (record linkage, interval measure)
+uniqueness does not apply - distnace/neighbor based measures (record linkage, interval measure) and outlier detection
 
-#### Outlier Detection
+### Outlier Detection
 
-Look at distributions 
+skewness and number of observations in tails
 
-```{r}
+#### Explore distributions
+
+Look at distributions - plots
+
+-skewness
+
+```{r plot-cont}
 
 ```
 
+#### Explore skewness
+
+no. oberservations and viewing values in tails 
 
 "identifying the values of a continuous variable that are larger than a predetermined p%-percentile might help identify outliers, and thus units at greater risk of identification. The value of p depends on the skewness of the data."
 
-```{r}
+```{r - outliers}
 #calculate frequency (or % of sample) of p% percentile for each cont variable
 
 #view largest and smallest values for top% (and bottom if not skewed)
 ```
 
+### A Posteriori Measures
 
+distnace/neighbor based measures (record linkage, interval measure)
 
+after anonymization - compares raw with transformed data
+
+# Statistical Disclosure Control
+
+control for risk - reduce risk, then reassess
+
+explain sdc, brief overview of different types of methods (perturbative vs non perturbative with mention of pros/cons). state for our purpose we don't want to perturb (lose truthfulness) so will recode etc..  
+
+## Set up sdcMicro Object
+
+## View initial suppression values for categorical variables
+
+## Recode continuous variables
+
+## Recode categorical variables
+
+## Local suppression for k-anonymity
+
+## Additional recoding of categorical variables - other options - to achieve acceptable suppression
+
+# Reassess Risk
 
