@@ -28,7 +28,7 @@ psych::describe(sim_df)
 
 ## Understanding Data and Context
 
-## Selecting Key Variables
+## Selecting Key Variables (PII)
 
 - different scenarios
 - run many times with different keys and see which variables are leading to most risk (e.g., most suppression, most unique keys)
@@ -39,9 +39,17 @@ Make sure there are similar unique cases/riskiness in simulated data
 
 ###Categorical Variables
 
+#### K-anon violations
+how is it different from below (switch section)
+```{r k-anon-vio}
+#vio k-anon violations
+freq_keys
+
+```
+
 #### Sample Frequencies/Uniqueness
 
-move info from below here
+- include table that shows relation of k-anon and individual risk %
 
 ```{r samp-freq}
 #vector of categorical variable names
@@ -53,18 +61,22 @@ catdf <- sim_df %>%
   select_if(is.factor)
 
 #sdcMicro function
-freq_keys <- freqCalc(sim_df, keyVars = catvars) #creates sdcMicro object
+freq_keys <- freqCalc(sim_df, keyVars = catvars) #creates sdcMicro class object #uses one set of key vars - may need to test with many
 
 
 #number of unique rows
 freq_keys$n1
+
 #number of rows with freq = 2
 freq_keys$n2
-#frequency counts for each row
+
+#extract frequency counts for each row
 counts <- freq_keys$fk
+
 #combine dataframe with frequencies counts for each row
 freq_counts <- cbind(sim_df, counts)
 head(freq_counts[, c(colnames(sim_df), "counts")])
+
 
 #aggregate to get frequencies for each key/combination
 agg_counts <- aggregate(counts ~ ., catdf, mean)
@@ -72,19 +84,20 @@ nrow(agg_counts) #number of possible keys/combinations
 
 sum(agg_counts$counts == 1) #unique keys/combinations
 
-sum(agg_counts$counts == 2) #keys/combinations with freq = 2
+sum(agg_counts$counts == 2) #keys/combinations with freq = 2 (half of n2 above since that shows rows and this is the combo)
 
 ##above is same info in different ways (maybe dont need aggregate unless youw ant to know number of possible keys - can get another way I am sure)
 
-```
+#filter dataframe by counts = 1 and 2 and view freq tables (compare %s with full data to see which responses are leading to most unique cases) - do it with key dataframe (not rows)
 
 
-#### K-anon violations
-how is it different from above (switch section)
-```{r k-anon-vio}
-#vio k-anon violations
-freq_keys
+
 ```
+
+use this: https://sdcpractice.readthedocs.io/en/latest/measure_risk.html#count-of-individuals-with-risks-larger-than-a-certain-threshold
+
+
+
 
 
 #### Individual Risk
@@ -104,8 +117,42 @@ freq_risk <- cbind(freq_counts, inriskvec) #- higher is worse. 1 = unique? indiv
 
 f(k) frequency count of each key
 
+global risk = (.13776) = "expected proportion of all individuals in the sample that could be re-identified by an intruder." average potential for successful re-identification is 13.776%.  
+
+number of expected re-identifications = n(25000) * global risk (.13776) = 3,444 - motivated intruder could identify. 
+
 ```{r first-risk}
 #need sdc object
 #fk <- 
+
+glrisk <- mean(inriskvec)
+
+glrisk
 ```
+
+### Continuous Variables
+
+most often looked at after anonymization and compared. 
+
+uniqueness does not apply - distnace/neighbor based measures (record linkage, interval measure)
+
+#### Outlier Detection
+
+Look at distributions 
+
+```{r}
+
+```
+
+
+"identifying the values of a continuous variable that are larger than a predetermined p%-percentile might help identify outliers, and thus units at greater risk of identification. The value of p depends on the skewness of the data."
+
+```{r}
+#calculate frequency (or % of sample) of p% percentile for each cont variable
+
+#view largest and smallest values for top% (and bottom if not skewed)
+```
+
+
+
 
