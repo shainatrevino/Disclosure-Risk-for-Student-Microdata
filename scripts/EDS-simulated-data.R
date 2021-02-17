@@ -15,7 +15,7 @@ wake_sim_data <- r_data_frame(n = 25000,
                                    prob = c(.63, .1395, .16, .04, .02, .007, .0015, .002)),
                               gpa(mean = 82, sd = 4.5),
                               answer(x = c("No", "Yes"), prob = c(.5, .5), name = "econ_dis"),
-                              answer(x = c("No", "Yes"), prob = c(.15, .85), name = "disability"),
+                              answer(x = c("No", "Yes"), prob = c(.85, .15), name = "disability"),
                               level(x = c("Autism", "Emotional Disturbance", "Intellectual Disability", "Developmental Delay", 
                                           "Speech/Language Impairments", "Specific Learning Disability", "Other"), 
                                     prob = c(.11, .05, .06, .07, .20, .33, .18), name = "dis_cat"),
@@ -80,4 +80,4 @@ sim_df <- sim_data %>%
 
 str(sim_df)
 
-rio::export(sim_df, file = "sim_df.csv")
+#rio::export(sim_df, file = "sim_df.csv")

@@ -30,7 +30,8 @@ randomly simulated, similar descriptives/distributions, correlations are not mai
 
 ```{r import, include = FALSE}
 sim_df <- rio::import(here::here("data", "sim_df.csv")) %>% 
-  mutate_if(is.character, as.factor)
+  mutate_if(is.character, as.factor) %>% 
+  mutate_all(na_if, "")
 #need to deal with missing data for characters/factors that are blank now
 
 summary(sim_df)
@@ -39,12 +40,39 @@ psych::describe(sim_df)
 
 ## Understanding Data and Context
 
+explore and understand data
+
 ## Selecting Key Variables (PII)
 
 - different scenarios
 - run many times with different keys and see which variables are leading to most risk (e.g., most suppression, most unique keys)
+- conservative (time-sensitive) all QIDs if data request is small enough (<20 vars, maybe 50)
+
+## Set up sdcMicro Object
+
+creates object based on key variables that will have many different layers (including risk/utility metrics, original data, transformed data, etc.)
+
+```{r sdc-obj}
+#vector of categorical variable names - using tidyverse package
+catvars <- sim_df %>% 
+  select_if(is.factor) %>% 
+  colnames()
+
+#or enter manually - use str() to view variables and types - make sure correct 
+str(sim_df)
+
+#create object
+df_sdcobj <- createSdcObj(dat = sim_df, #input data
+                          keyVars = catvars, #categorical key variables - vector we created previously
+                          numVars = c("gpa", "iss_off", "iss_days", "subj_off", "days_absent")) #continuous key variables
+
+
+
+```
 
 # Disclosure Risk Assessment
+
+NEED TO FIGURE OUT WHICH RISK ASSESSMENT STUFF YOU CANNOT DO AFTER ALREADY MADE OBJECT - MOST LIKLEY EASIER TO EXPLAIN WITH JUST MAKING SDCOBJECT FIRST AND VIEWING RESULTS OF THAT THEN ASSESSING REST OF RAW DATA RISK (WOULD BE LESS LINES OF CODE) - could assess all risk stuff with sdc object, then say some cannot be assessed with that so another way is to (also try with different sets of QIDs)
 
 explain DRA (cont and cat differences) 
 
@@ -52,32 +80,94 @@ assessing risk
 
 Make sure there are similar unique cases/riskiness in simulated data
 
+no sampling weights - so risk might be overestimated
+
 ##Categorical Variables
 
 ### K-anon violations
 how is it different from below (switch section)
-```{r k-anon-vio}
-#vio k-anon violations
-freq_keys
 
+```{r k-anon-vio-sdcobj}
+print(df_sdcobj)
+
+kvio <- kAnon_violations(df_sdcobj, FALSE, 10)
+print(kvio)
+
+#how does this look when rendered? - want to show size of smallest N table here and when comparing raw and transformed
+df_sdcobj 
 ```
 
-### Sample Frequencies/Uniqueness
+```{r k-anon-vio-OLD}
+#sdcMicro function
+freq_keys <- freqCalc(sim_df, keyVars = catvars) #creates sdcMicro class object #uses one set of key vars - may need to test with many
+
+#vio k-anon violations
+freq_keys
+```
+
+
+### Global Risk
+
+f(k) frequency count of each key
+
+global risk = (.13776) = "expected proportion of all individuals in the sample that could be re-identified by an intruder." average potential for successful re-identification is 13.776%.  
+
+number of expected re-identifications = n(25000) * global risk (.13776) = 3,444 - motivated intruder could identify. 
+
+```{r global-risk-OLD}
+print(df_sdcobj, "risk")
+```
+
+
+```{r first-risk-OLD}
+#need sdc object
+#fk <- 
+
+glrisk <- mean(inriskvec)
+
+glrisk
+```
+
+### Individual Risk and Sample Frequencies/Uniqueness
 
 - include table that shows relation of k-anon and individual risk %
 
 ```{r samp-freq}
-#vector of categorical variable names
-catvars <- sim_df %>% 
-  select_if(is.factor) %>% 
-  colnames()
-#dataset with only categorical variables
-catdf <- sim_df %>% 
-  select_if(is.factor)
+ind_freq <- freq(df_sdcobj, type = "fk")
 
-#sdcMicro function
-freq_keys <- freqCalc(sim_df, keyVars = catvars) #creates sdcMicro class object #uses one set of key vars - may need to test with many
+ind_risk <- data.frame(df_sdcobj@risk$individual)
 
+ind_risk_df <- cbind(sim_df, ind_risk)
+
+
+```
+
+#### Unique Variable Response Combinations
+
+```{r agg-freq-keys}
+#aggregate for keys (using tidyverse)
+var_combos <- ind_risk_df %>% 
+  select(id, is.factor, risk, fk) %>% 
+  group_by(grade_level, sex, race, econ_dis, disability, dis_cat, lang) %>%  #prespecified vector
+  summarize(risk = mean(risk),
+            freq = mean(fk),
+            .groups = "keep")
+
+#sort high risk
+uniq <- var_combos %>% 
+  filter(freq == 1)
+
+risky <- var_combos %>% 
+  filter(freq <= 5) %>% 
+  arrange(freq)
+
+
+#aggregate for keys (combos), not rows
+#sort by high risk
+```
+
+
+```{r samp-freq-OLD}
 
 #number of unique rows
 freq_keys$n1
@@ -94,8 +184,14 @@ head(freq_counts[, c(colnames(sim_df), "counts")])
 
 
 #aggregate to get frequencies for each key/combination
+
+#dataset with only categorical variables
+catdf <- sim_df %>% 
+  select_if(is.factor)
+
+#aggregate
 agg_counts <- aggregate(counts ~ ., catdf, mean)
-nrow(agg_counts) #number of possible keys/combinations
+nrow(agg_counts) #number of possible keys/combinations (without missing values?)
 
 sum(agg_counts$counts == 1) #unique keys/combinations
 
@@ -112,12 +208,7 @@ sum(agg_counts$counts == 2) #keys/combinations with freq = 2 (half of n2 above s
 use this: https://sdcpractice.readthedocs.io/en/latest/measure_risk.html#count-of-individuals-with-risks-larger-than-a-certain-threshold
 
 
-
-
-
-### Individual Risk
-
-```{r ind-risk}
+```{r ind-risk-OLD}
 
 
 ##INDIVIDUAL RISK CALCULATION 
@@ -128,28 +219,13 @@ freq_risk <- cbind(freq_counts, inriskvec) #- higher is worse. 1 = unique? indiv
 
 ```
 
-### Global Risk
 
-f(k) frequency count of each key
-
-global risk = (.13776) = "expected proportion of all individuals in the sample that could be re-identified by an intruder." average potential for successful re-identification is 13.776%.  
-
-number of expected re-identifications = n(25000) * global risk (.13776) = 3,444 - motivated intruder could identify. 
-
-```{r first-risk}
-#need sdc object
-#fk <- 
-
-glrisk <- mean(inriskvec)
-
-glrisk
-```
 
 ## Continuous Variables
 
 most often looked at after anonymization and compared. 
 
-uniqueness does not apply - distnace/neighbor based measures (record linkage, interval measure) and outlier detection
+uniqueness does not apply - distance/neighbor based measures (record linkage, interval measure) and outlier detection
 
 ### Outlier Detection
 
@@ -190,6 +266,19 @@ control for risk - reduce risk, then reassess
 explain sdc, brief overview of different types of methods (perturbative vs non perturbative with mention of pros/cons). state for our purpose we don't want to perturb (lose truthfulness) so will recode etc..  
 
 ## Set up sdcMicro Object
+
+```{r sdc-obj}
+str(sim_df)
+
+df_sdcobj <- createSdcObj(dat = sim_df, #input data
+                          keyVars = catvars, #categorical key variables - vector we created previously
+                          numVars = c("gpa", "iss_off", "iss_days", "subj_off", "days_absent")) #continuous key variables
+
+
+
+```
+
+GET INFO FROM TUTORIAL RMD (VIEWING SDCOBJ ETC.)
 
 ## View initial suppression values for categorical variables
 
