@@ -227,9 +227,7 @@ most often looked at after anonymization and compared.
 
 uniqueness does not apply - distance/neighbor based measures (record linkage, interval measure) and outlier detection
 
-### Outlier Detection
-
-skewness and number of observations in tails
+sdcmicro has functions for comparing afterwards, but not looking at before so we will just explore distributions and outliers. 
 
 #### Explore distributions
 
@@ -237,13 +235,78 @@ Look at distributions - plots
 
 -skewness
 
+-gpa is potentially not identifier, may not need top/bottom code
+
 ```{r plot-cont}
+#make plot function
+#plot all cont vars
+#show code for hist() function since it is easy
+
+hist(sim_df$gpa)
+
+hist(sim_df$iss_off)
+
+hist(sim_df$iss_days)
+
+hist(sim_df$days_absent)
 
 ```
 
+### Outlier Detection/Explore Skewness
+
+skewness and number of observations in tails (of skewed variables above)
+
+```{r outlier-detect}
+#COPIED DIRECTLY
+# 90 percentile for income
+perc90 <- quantile(file[,'income'], 0.90, na.rm = TRUE)
+
+# Show the ID of observations with values for income larger than the 90 % percentile\
+file[(file[, 'income'] >= perc90), 'ID']
+
+
+##MY VARS
+quantile(sim_df$gpa, c(0, .25, .5, .75, 1), na.rm = TRUE) #seems to already been binned/aggregated so that is already protected as we do not know the exact value for each student - could make sense to make categorical or top/bottom code (below 2, above 3.5 - although other categories seem categorical)
+
+quantile(sim_df$iss_off, c(.95, .95, .97, .98, .99, 1), na.rm = TRUE)
+summary(as.factor(sim_df$gpa))
+
+huh <- quantile(sim_df$days_absent, c(0, .25, .5, .75, 1), na.rm = TRUE) #high skew so look at high quantiles
+
+sim_df %>% 
+  filter(days_absent >= 10) %>% 
+  arrange(desc(days_absent)) %>% 
+  head(10)
+
+quantile(sim_df$days_absent, c(.80, .85, .90, .95, 1), na.rm = TRUE) #look to chose top code value (trade off of utility and cell size)
+
+summary(as.factor(sim_df$days_absent)) #bad distribution (need more for 0 and 1 - oh boy...)
+
+
+#suspension data is more skewed so we will only look at values of top tails
+quantile(sim_df$iss_off, c(.80, .85, .90, .95, 1), na.rm = TRUE)
+quantile(sim_df$iss_off, c(.95, .95, .97, .98, .99, 1), na.rm = TRUE)
+summary(as.factor(sim_df$iss_off))
+
+quantile(sim_df$iss_days, c(.80, .85, .90, .95, 1), na.rm = TRUE)
+quantile(sim_df$iss_days, c(.95, .95, .97, .98, .99, 1), na.rm = TRUE)
+summary(as.factor(sim_df$iss_days))
+
+quantile(sim_df$subj_off, c(.80, .85, .90, .95, 1), na.rm = TRUE)
+quantile(sim_df$subj_off, c(.95, .95, .97, .98, .99, 1), na.rm = TRUE)
+summary(as.factor(sim_df$subj_off))
+
+#options - severe top code, bin into categories and treat as categorical to keep higher values, restrict access/share under FERPA exception
+
+```
+
+
+
+
+
 #### Explore skewness
 
-no. oberservations and viewing values in tails 
+no. oberservations and viewing values in tails (freq table)
 
 "identifying the values of a continuous variable that are larger than a predetermined p%-percentile might help identify outliers, and thus units at greater risk of identification. The value of p depends on the skewness of the data."
 
@@ -253,7 +316,7 @@ no. oberservations and viewing values in tails
 #view largest and smallest values for top% (and bottom if not skewed)
 ```
 
-### A Posteriori Measures
+### A Posteriori Measures - or just mention in intro then talk about in reassess (last) section
 
 distnace/neighbor based measures (record linkage, interval measure)
 
@@ -265,24 +328,52 @@ control for risk - reduce risk, then reassess
 
 explain sdc, brief overview of different types of methods (perturbative vs non perturbative with mention of pros/cons). state for our purpose we don't want to perturb (lose truthfulness) so will recode etc..  
 
-## Set up sdcMicro Object
-
-```{r sdc-obj}
-str(sim_df)
-
-df_sdcobj <- createSdcObj(dat = sim_df, #input data
-                          keyVars = catvars, #categorical key variables - vector we created previously
-                          numVars = c("gpa", "iss_off", "iss_days", "subj_off", "days_absent")) #continuous key variables
-
-
-
-```
 
 GET INFO FROM TUTORIAL RMD (VIEWING SDCOBJ ETC.)
 
-## View initial suppression values for categorical variables
+privacy method - kanonymity (choosing k of 5 to be shared with researchers w/o FERPA exception but with DSA that stipulated data destruction - etc. other things that reduce risk)
 
 ## Recode continuous variables
+
+cont variables dealt with differently
+
+```{r cont-recoding}
+
+#change gpa into intervals based on values we have? 
+#possible to group and rename continuous variables? - 1-2 (2 or below); 3.6-4 (above 3.5); others remain same but change to factor variable.  
+summary(as.factor(sim_df$gpa))
+
+#top/bottom code with sdcMicro code
+
+#top/bottom code with tidyverse and remake sdcobject with that data frame
+
+```
+
+
+## View initial suppression values for categorical variables
+
+runtime can be long - computationally intense - more so with more categorical variables and response options
+
+only categorical variables in sdcobject - can inlcude importance ranking
+
+using k anon with k of 5. # of k anon violations from above (inline code?)
+
+```{r local-suppression}
+sdcobj_sup <- kAnon(df_sdcobj, #sdcMicro object we created above
+                    importance=c(1, 3, 2, 4, 5, 6, 7), #importance ranking for categorical keys - dafault is order based on # of response categories will be suppressed more
+                    k = c(5)) #k-anonymity value (k = 2)
+
+#save RDS to import so this doesnt have to knit everytime? 
+```
+
+View results
+
+- look at number of suppressions (and %)
+
+```{r initial-results}
+print(sdcobj_sup)
+```
+
 
 ## Recode categorical variables
 
@@ -291,4 +382,8 @@ GET INFO FROM TUTORIAL RMD (VIEWING SDCOBJ ETC.)
 ## Additional recoding of categorical variables - other options - to achieve acceptable suppression
 
 # Reassess Risk
+
+```{r outlier-rmd}
+#huh <- dRiskRMD(df_sdcobj) #all risk values were 0 - think this needs to compare original and transformed data 
+```
 
