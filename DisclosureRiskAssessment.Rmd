@@ -1,5 +1,5 @@
 ---
-title: "Applied DRA and Control with sdcMicro Draft"
+title: "Applied DRA and Control with sdcMicro Draft - Intro to basic data anonymization with student microdata"
 author: "Shaina Trevino"
 date: "1/19/2021"
 output: html_document
@@ -27,6 +27,8 @@ purpose, steps (DRA, SDC, reasses), explanation of data
 Chose variables, clean data (filter year, aggregate schools), random subsample, simulate data, export for use
 
 randomly simulated, similar descriptives/distributions, correlations are not maintained. 
+
+TAKE OUT DAYS ABSENT BECAUSE OF DISTRIBUTION ERROR
 
 ```{r import, include = FALSE}
 sim_df <- rio::import(here::here("data", "sim_df.csv")) %>% 
@@ -62,7 +64,7 @@ catvars <- sim_df %>%
 str(sim_df)
 
 #create object
-df_sdcobj <- createSdcObj(dat = sim_df, #input data
+initial_sdcobj <- createSdcObj(dat = sim_df, #input data
                           keyVars = catvars, #categorical key variables - vector we created previously
                           numVars = c("gpa", "iss_off", "iss_days", "subj_off", "days_absent")) #continuous key variables
 
@@ -88,13 +90,13 @@ no sampling weights - so risk might be overestimated
 how is it different from below (switch section)
 
 ```{r k-anon-vio-sdcobj}
-print(df_sdcobj)
+print(initial_sdcobj)
 
-kvio <- kAnon_violations(df_sdcobj, FALSE, 10)
+kvio <- kAnon_violations(initial_sdcobj, FALSE, 10)
 print(kvio)
 
 #how does this look when rendered? - want to show size of smallest N table here and when comparing raw and transformed
-df_sdcobj 
+initial_sdcobj 
 ```
 
 ```{r k-anon-vio-OLD}
@@ -115,27 +117,19 @@ global risk = (.13776) = "expected proportion of all individuals in the sample t
 number of expected re-identifications = n(25000) * global risk (.13776) = 3,444 - motivated intruder could identify. 
 
 ```{r global-risk-OLD}
-print(df_sdcobj, "risk")
+print(initial_sdcobj, "risk")
 ```
 
 
-```{r first-risk-OLD}
-#need sdc object
-#fk <- 
-
-glrisk <- mean(inriskvec)
-
-glrisk
-```
 
 ### Individual Risk and Sample Frequencies/Uniqueness
 
 - include table that shows relation of k-anon and individual risk %
 
 ```{r samp-freq}
-ind_freq <- freq(df_sdcobj, type = "fk")
+ind_freq <- freq(initial_sdcobj, type = "fk")
 
-ind_risk <- data.frame(df_sdcobj@risk$individual)
+ind_risk <- data.frame(initial_sdcobj@risk$individual)
 
 ind_risk_df <- cbind(sim_df, ind_risk)
 
@@ -147,7 +141,7 @@ ind_risk_df <- cbind(sim_df, ind_risk)
 ```{r agg-freq-keys}
 #aggregate for keys (using tidyverse)
 var_combos <- ind_risk_df %>% 
-  select(id, is.factor, risk, fk) %>% 
+  select(id, where(is.factor), risk, fk) %>% 
   group_by(grade_level, sex, race, econ_dis, disability, dis_cat, lang) %>%  #prespecified vector
   summarize(risk = mean(risk),
             freq = mean(fk),
@@ -257,18 +251,10 @@ hist(sim_df$days_absent)
 skewness and number of observations in tails (of skewed variables above)
 
 ```{r outlier-detect}
-#COPIED DIRECTLY
-# 90 percentile for income
-perc90 <- quantile(file[,'income'], 0.90, na.rm = TRUE)
-
-# Show the ID of observations with values for income larger than the 90 % percentile\
-file[(file[, 'income'] >= perc90), 'ID']
-
-
 ##MY VARS
 quantile(sim_df$gpa, c(0, .25, .5, .75, 1), na.rm = TRUE) #seems to already been binned/aggregated so that is already protected as we do not know the exact value for each student - could make sense to make categorical or top/bottom code (below 2, above 3.5 - although other categories seem categorical)
 
-quantile(sim_df$iss_off, c(.95, .95, .97, .98, .99, 1), na.rm = TRUE)
+quantile(sim_df$iss_off, c(.95, .96, .97, .98, .99, 1), na.rm = TRUE)
 summary(as.factor(sim_df$gpa))
 
 huh <- quantile(sim_df$days_absent, c(0, .25, .5, .75, 1), na.rm = TRUE) #high skew so look at high quantiles
@@ -280,20 +266,20 @@ sim_df %>%
 
 quantile(sim_df$days_absent, c(.80, .85, .90, .95, 1), na.rm = TRUE) #look to chose top code value (trade off of utility and cell size)
 
-summary(as.factor(sim_df$days_absent)) #bad distribution (need more for 0 and 1 - oh boy...)
+summary(as.factor(sim_df$days_absent)) #bad distribution (need more for 0 and 1 - oh boy...) - take out this variable?
 
 
 #suspension data is more skewed so we will only look at values of top tails
 quantile(sim_df$iss_off, c(.80, .85, .90, .95, 1), na.rm = TRUE)
-quantile(sim_df$iss_off, c(.95, .95, .97, .98, .99, 1), na.rm = TRUE)
+quantile(sim_df$iss_off, c(.95, .96, .97, .98, .99, 1), na.rm = TRUE)
 summary(as.factor(sim_df$iss_off))
 
 quantile(sim_df$iss_days, c(.80, .85, .90, .95, 1), na.rm = TRUE)
-quantile(sim_df$iss_days, c(.95, .95, .97, .98, .99, 1), na.rm = TRUE)
+quantile(sim_df$iss_days, c(.95, .96, .97, .98, .99, 1), na.rm = TRUE)
 summary(as.factor(sim_df$iss_days))
 
 quantile(sim_df$subj_off, c(.80, .85, .90, .95, 1), na.rm = TRUE)
-quantile(sim_df$subj_off, c(.95, .95, .97, .98, .99, 1), na.rm = TRUE)
+quantile(sim_df$subj_off, c(.95, .96, .97, .98, .99, 1), na.rm = TRUE)
 summary(as.factor(sim_df$subj_off))
 
 #options - severe top code, bin into categories and treat as categorical to keep higher values, restrict access/share under FERPA exception
@@ -310,7 +296,7 @@ no. oberservations and viewing values in tails (freq table)
 
 "identifying the values of a continuous variable that are larger than a predetermined p%-percentile might help identify outliers, and thus units at greater risk of identification. The value of p depends on the skewness of the data."
 
-```{r - outliers}
+```{r outliers}
 #calculate frequency (or % of sample) of p% percentile for each cont variable
 
 #view largest and smallest values for top% (and bottom if not skewed)
@@ -337,6 +323,10 @@ privacy method - kanonymity (choosing k of 5 to be shared with researchers w/o F
 
 cont variables dealt with differently
 
+could change gpa to intervals, but since middle values have high freq - looks already factored - we will just top and bottom code this to make equal N groups. - may not be as useful to analyst if variable of interest. 
+
+use sdcMicro object we created and save over it (or create new object)
+
 ```{r cont-recoding}
 
 #change gpa into intervals based on values we have? 
@@ -345,9 +335,65 @@ summary(as.factor(sim_df$gpa))
 
 #top/bottom code with sdcMicro code
 
-#top/bottom code with tidyverse and remake sdcobject with that data frame
+#top code
+tbcode_sdcobj <- topBotCoding(obj = initial_sdcobj, #initial object
+                               column = "gpa", #variable to top/bottom code
+                               value = 3, #number that will be top coded (>3 will be recoded)
+                               replacement = 3334, #number that will replace top coded values - has to be integer- tidy afterward
+                               kind = "top") #specify top or bottom coding
+
+#bottom code
+tbcode_sdcobj <- topBotCoding(obj = tbcode_sdcobj, #object you created above when top coding
+                               column = "gpa", 
+                               value = 2.33, #<2.33 will be recoded
+                               replacement = 12, 
+                               kind = "bottom") 
+
+#manual check
+summary(as.factor(sim_df$gpa))
+summary(as.factor(tbcode_sdcobj@manipNumVars$gpa))
 
 ```
+
+check continous variable distribution/freq and mention they could check cross tabs with demos 
+
+Discipline variables - highly skewed. 
+
+based on quantiles above, decided to topcode top 3% of students
+
+
+```{r disc-tbcode}
+#top code
+tbcode_sdcobj <- topBotCoding(obj = tbcode_sdcobj, #object created above when top/bottom coding gpa
+                               column = "iss_off",
+                               value = 2, #3 and up are top-coded
+                               replacement = 333,
+                               kind = "top")
+
+tbcode_sdcobj <- topBotCoding(obj = tbcode_sdcobj, #object created above when top/bottom coding gpa
+                               column = "iss_days",
+                               value = 2, #3 and up are top-coded
+                               replacement = 333,
+                               kind = "top")
+
+tbcode_sdcobj <- topBotCoding(obj = tbcode_sdcobj, #object created above when top/bottom coding gpa
+                               column = "subj_off",
+                               value = 3, #4 and up are top-coded
+                               replacement = 444,
+                               kind = "top")
+
+```
+
+```{r tbcode_check, include = FALSE}
+#double check
+tbcode_sdcobj@manipNumVars
+```
+
+
+
+look at responses within equavalence classes if worried about risk
+
+IF EDITING DAYS ABSENT VAR - LESS RISKY AND SKEWED THAN DISCIPLINE -  ONLY WORRIED ABOUT PROTECTING THOSE WITH HIGH VALUES OF ABSENSES - MAYBE OVER A WEEK - TOPCODE THAT. 
 
 
 ## View initial suppression values for categorical variables
@@ -358,8 +404,12 @@ only categorical variables in sdcobject - can inlcude importance ranking
 
 using k anon with k of 5. # of k anon violations from above (inline code?)
 
+code that will take a while to run - WARNING - this takes a while, so be aware and maybe try a subset. caching will save version of object into local folder and access that cache when rerunning that chunk. be careful to not cache certain chunks. 
+
+- can skip step. 
+
 ```{r local-suppression}
-sdcobj_sup <- kAnon(df_sdcobj, #sdcMicro object we created above
+sdcobj_sup <- kAnon(initial_sdcobj, #sdcMicro object we created above
                     importance=c(1, 3, 2, 4, 5, 6, 7), #importance ranking for categorical keys - dafault is order based on # of response categories will be suppressed more
                     k = c(5)) #k-anonymity value (k = 2)
 
