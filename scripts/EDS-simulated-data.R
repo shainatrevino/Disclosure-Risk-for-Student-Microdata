@@ -10,7 +10,7 @@ wake_sim_data <- r_data_frame(n = 25000,
                               grade_level(x = c("Pre-K", "Kindergarten", "1st Grade", "2nd Grade", "3rd Grade", "4th Grade", "5th Grade", "6th Grade",
                                                 "7th Grade", "8th Grade", "9th Grade", "10th Grade", "11th Grade", "12th Grade"),
                                           prob = c(.7, rep(1, 10), .9, .85, .8)),
-                              sex_inclusive(x = c("Male", "Female", "Other"), prob = c(.49, .49, .02)),
+                              sex(x = c("Male", "Female"), prob = c(.49, .50)),
                               race(x = c("White", "Black", "Hispanic", "Asian", "Multi-racial", "Native", "Pacific Islander", "Other"),
                                    prob = c(.63, .1395, .16, .04, .02, .007, .0015, .002)),
                               gpa(mean = 82, sd = 4.5),
@@ -29,8 +29,20 @@ wake_sim_data <- r_data_frame(n = 25000,
 
 #days absent
 set.seed(1302021)
-days_absent <- round(rlnorm(25000, 1.8, .8)) 
+days_absent_old <- round(rlnorm(25000, .6, 1.15)) 
 hist(days_absent)
+range(days_absent)
+summary(as.factor(days_absent))
+
+# days_absent
+set.seed(1302021)
+days_absent <- c(rep(0, 4516),
+              sample(1:5, 17000, prob = c(.25, .18, .13, .11, .05), replace = TRUE),
+              sample(6:15, 2900, prob = c(.26, .20, .12, .07, .07, .05, .05, .04, .04, .03), replace = TRUE),
+              sample(16:60, 575, prob = c(.3, .3, .25, .15, .15, .13, .13, .13, .13, .13, .08, .12, .08, .12, .12, .12, .12, .08, .12, .12, .12, .12, .06, .06, .06, .06, .06, .06, .06, .06, .06, .06, .03, .03, .03, .03, .03, .03, .03, .03, .03, .03, .03, .03, .03), replace = TRUE),
+              63, 69, 75, 79, 83, 95, 101, 111, 116) #9 tail values
+
+subj_off1 <- sample(subj_off) #randomize
 
 # n. of subj offenses
 set.seed(1302021)
