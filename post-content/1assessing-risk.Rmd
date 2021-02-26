@@ -1,0 +1,299 @@
+---
+title: "Assessing Disclsoure Risk"
+author: "Shaina Trevino"
+date: "2/26/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(sdcMicro)
+```
+
+need to make report style - with very small explained code chunks - view report templates
+
+#Overview
+
+DRA & SDC
+
+purpose, steps (DRA, SDC, reasses), explanation of data
+
+# Preprocessing
+
+
+## Import Data
+
+Chose variables, clean data (filter year, aggregate schools), random subsample, simulate data, export for use
+
+randomly simulated, similar descriptives/distributions, correlations are not maintained. 
+
+TAKE OUT DAYS ABSENT BECAUSE OF DISTRIBUTION ERROR
+
+explain variables and simulation
+
+```{r import, include = FALSE}
+sim_df <- rio::import(here::here("data", "sim_df.csv")) %>% 
+  mutate_if(is.character, as.factor) %>% 
+  mutate_all(na_if, "")
+#need to deal with missing data for characters/factors that are blank now
+
+#use str() to view variables and types - make sure correct 
+str(sim_df)
+```
+
+## Understanding Data and Context
+
+explore and understand data
+
+## Selecting Key Variables (PII)
+define key variables
+
+- different scenarios
+- run many times with different keys and see which variables are leading to most risk (e.g., most suppression, most unique keys)
+- conservative (time-sensitive) all QIDs if data request is small enough (<20 vars, maybe 50)
+
+## Set up sdcMicro Object
+
+creates object based on key variables that will have many different layers (including risk/utility metrics, original data, transformed data, etc.)
+
+```{r sdc-obj}
+#create object
+initial_sdcobj <- createSdcObj(dat = sim_df, #input data
+                               keyVars = c("grade_level", "sex", "race", "econ_dis", "disability", "dis_cat", "lang"), #categorical key variables
+                               numVars = c("gpa", "iss_off", "iss_days", "subj_off", "days_absent")) #continuous key variables
+
+
+
+```
+
+# Disclosure Risk Assessment
+
+explain DRA (cont and cat differences) 
+
+assessing risk
+
+Make sure there are similar unique cases/riskiness in simulated data
+
+no sampling weights - so risk might be overestimated
+
+##Categorical Variables
+
+### K-anon violations
+
+Define k-anon, mention that is our privacy model with 5 as threshold for public use non FERPA exception
+violations, uniqueness, etc.
+
+```{r k-anon-vio-sdcobj}
+print(initial_sdcobj)
+
+
+ 
+```
+
+```{r kten}
+
+kvio <- kAnon_violations(initial_sdcobj, FALSE, 10)
+print(kvio)
+
+```
+
+```{r k-anon-vio-info}
+#how does this look when rendered? - want to show size of smallest N table here and when comparing raw and transformed
+initial_sdcobj
+```
+
+
+
+### Global Risk
+
+Define
+
+```{r global-risk-OLD}
+print(initial_sdcobj, "risk")
+```
+
+global risk = (.1110) = "expected proportion of all individuals in the sample that could be re-identified by an intruder." average potential for successful re-identification is 11.10%.  
+
+number of expected re-identifications = n(25000) * global risk (.1110) = 2,774 - motivated intruder could identify. 
+
+no. with more than average risk
+
+
+
+
+### Individual Risk and Sample Frequencies/Uniqueness
+
+- include table that shows relation of k-anon and individual risk %? or explain verbally
+
+f(k) frequency count of each key
+
+```{r samp-freq-risk}
+ind_risk <- data.frame(initial_sdcobj@risk$individual) %>% 
+  select(-Fk) #get ind risk and freq counts
+
+ind_risk_df <- cbind(sim_df, ind_risk) #combine with data
+
+
+```
+
+```{r samp-uniq}
+#view data
+ind_risk_df %>% 
+  arrange(desc(risk)) %>% 
+  head(10)
+#individuals with high risk
+```
+
+
+#### Unique Variable Response Combinations
+
+can aggregate indivudlas to combos of key variables
+
+```{r agg-freq-keys}
+#aggregate for keys (using tidyverse)
+var_combos <- ind_risk_df %>% 
+  select(id, where(is.factor), risk, fk) %>% 
+  group_by(grade_level, sex, race, econ_dis, disability, dis_cat, lang) %>%  #prespecified vector
+  summarize(risk = mean(risk),
+            freq = mean(fk),
+            .groups = "keep")
+
+head(var_combos)
+
+```
+```{r agg-uniq}
+#sort high risk - filter unique
+uniq <- var_combos %>% 
+  filter(freq == 1)
+
+head(uniq)
+
+```
+
+define k-anon privacy model and 5 threshold for public use non-FERPA exception
+
+```{r agg-risk}
+
+#filter high risk past threshold
+risky <- var_combos %>% 
+  filter(freq <= 5) %>% 
+  arrange(freq)
+
+head(risky)
+
+
+#aggregate for keys (combos), not rows
+#sort by high risk
+```
+
+
+
+
+use this: https://sdcpractice.readthedocs.io/en/latest/measure_risk.html#count-of-individuals-with-risks-larger-than-a-certain-threshold
+
+
+
+
+## Continuous Variables
+
+most often looked at after anonymization and compared. 
+
+uniqueness does not apply - distance/neighbor based measures (record linkage, interval measure) and outlier detection
+
+sdcmicro has functions for comparing afterwards, but not looking at before so we will just explore distributions and outliers. 
+
+#### Explore distributions
+
+Look at distributions - plots
+
+-skewness
+
+-gpa is potentially not identifier, may not need top/bottom code
+
+```{r plot-cont}
+#make plot function
+#plot all cont vars
+#show code for hist() function since it is easy
+
+hist(sim_df$gpa)
+
+hist(sim_df$iss_off)
+
+hist(sim_df$iss_days)
+
+hist(sim_df$days_absent)
+
+#partition into one plot with the 4 windows for knitting
+
+```
+Look at these distributions in more detail (below)
+
+### Outlier Detection/Explore Tails
+
+no. oberservations and viewing values in tails (freq table)
+
+"identifying the values of a continuous variable that are larger than a predetermined p%-percentile might help identify outliers, and thus units at greater risk of identification. The value of p depends on the skewness of the data."
+
+```{r outliers}
+#calculate frequency (or % of sample) of p% percentile for each cont variable
+
+#view largest and smallest values for top% (and bottom if not skewed)
+```
+
+skewness and number of observations in tails (of skewed variables above)
+
+```{r outlier-detect}
+#gpa
+quantile(sim_df$gpa, c(0, .25, .5, .75, 1), na.rm = TRUE) 
+table(sim_df$gpa)
+```
+
+```{r outlier-detect2}
+#days absent
+quantile(sim_df$days_absent, c(0, .25, .5, .75, 1), na.rm = TRUE) #high skew so look at high quantiles
+quantile(sim_df$days_absent, c(.80, .85, .90, .95, 1), na.rm = TRUE) #look to chose top code value (trade off of utility and cell size)
+table(sim_df$days_absent)
+
+```
+
+seems to already been binned/aggregated so that is already protected as we do not know the exact value for each student - could make sense to make categorical or top/bottom code (below 2, above 3.5 - although other categories seem categorical)
+
+discipline data more skewed
+
+suspension data is more skewed so we will only look at values of top tails
+
+```{r outlier-disc}
+#in school suspensions
+quantile(sim_df$iss_off, c(.80, .85, .90, .95, 1), na.rm = TRUE)
+quantile(sim_df$iss_off, c(.95, .96, .97, .98, .99, 1), na.rm = TRUE)
+table(sim_df$iss_off)
+
+```
+
+```{r outlier-disc2}
+#suspension days
+quantile(sim_df$iss_days, c(.80, .85, .90, .95, 1), na.rm = TRUE)
+quantile(sim_df$iss_days, c(.95, .96, .97, .98, .99, 1), na.rm = TRUE)
+table(sim_df$iss_days)
+
+```
+
+
+```{r outlier-disc3}
+#subjective offenses
+quantile(sim_df$subj_off, c(.80, .85, .90, .95, 1), na.rm = TRUE)
+quantile(sim_df$subj_off, c(.95, .96, .97, .98, .99, 1), na.rm = TRUE)
+table(sim_df$subj_off)
+```
+
+options - severe top code, bin into categories and treat as categorical to keep higher values, restrict access/share under FERPA exception
+
+
+### A Posteriori Measures - or just mention in intro then talk about in reassess (last) section
+
+distnace/neighbor based measures (record linkage, interval measure)
+
+after anonymization - compares raw with transformed data
+
+later post describes how to compute and interpret interval measure
