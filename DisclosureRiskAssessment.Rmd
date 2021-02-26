@@ -395,6 +395,18 @@ look at responses within equavalence classes if worried about risk
 
 IF EDITING DAYS ABSENT VAR - LESS RISKY AND SKEWED THAN DISCIPLINE -  ONLY WORRIED ABOUT PROTECTING THOSE WITH HIGH VALUES OF ABSENSES - MAYBE OVER A WEEK - TOPCODE THAT. 
 
+could use ranges, but for quickness we will just top code based on quantiles/frequencies and what makes sense (over 5 days/ 1 school week)
+
+```{r abs-tbcode}
+
+tbcode_sdcobj <- topBotCoding(obj = tbcode_sdcobj, #object created above when top/bottom coding gpa
+                               column = "days_absent",
+                               value = 5, #over 5 days are top-coded
+                               replacement = 666,
+                               kind = "top")
+
+```
+
 
 ## View initial suppression values for categorical variables
 
@@ -424,16 +436,168 @@ View results
 print(sdcobj_sup)
 ```
 
+could keep this. not useful if people are interested in small language groups or disability categories. we will try to recode those to see if it will reduce suppression
 
 ## Recode categorical variables
 
+not dichotomous
+
+```{r freq, include = FALSE}
+#view levels and frequencies
+summary(fct_infreq(sim_df$race))
+
+summary(fct_infreq(sim_df$dis_cat))
+```
+
+recode vars from above suppression, based on research necessity. assume lang doesnt need this fine of detail for analysis, but keeping as much dis_cat as possible is best. 
+
+recode based on frequencies - english, spanish, other
+
+if dis_cat was not helpful for analysis, suggest excluding that variable. If helpful talk with analysts to see what level of aggregation can be applied
+
+ID/DD then suppress whats left. 
+
+```{r recode-cat}
+#Recode lang
+sdcobj_recode <- groupAndRename(obj = tbcode_sdcobj, #use object with top bottom codes for continuous vars
+                                    var = "lang", #variable to recode
+                                    before = c("Other","Chinese", "Vietnamese", "Arabic", "Russian", "German", "Swahili"), #vector of variable raw variable levels
+                                    after = c("Other")) #name the new group for after recoding
+
+#Recode dis_cat
+sdcobj_recode <- groupAndRename(obj = sdcobj_recode, #use sdcobj_recode object you made above
+                                    var = "dis_cat",
+                                    before = c("Developmental Delay","Intellectual Disability"),
+                                    after = c("Developmental Delay/Intellectual Disability")) 
+
+```
+
+
+
+
 ## Local suppression for k-anonymity
+
+```{r k-anon-supp}
+
+sdcobj_final <- kAnon(sdcobj_recode, #object we have been recoding
+                      importance=c(1, 3, 2, 4, 5, 6, 7), #importance ranking
+                      k = c(5)) #k-anonymity value (k = 5)
+
+print(sdcobj_final)
+
+```
+
+
 
 ## Additional recoding of categorical variables - other options - to achieve acceptable suppression
 
+could keep going, try more recoding for dis_cat or maybe race, make language dichotomous or take out language variable to see if it makes substantial difference in suppression %s
+
+- tried with language dichotomous, didnt change much ( 1 supreesion for grade level; ~1% less suppression for last two vars - not worth it to not have spanish as option if keeping lang var - could remove completely)
+
+take row out for grade_level suppresion 2 if stop now since no other NA values (check)
+
+```{r}
+
+sdcobj_recode1 <- groupAndRename(obj = sdcobj_recode, #use sdcobj_recode object you made above
+                                var = "lang",
+                                before = c("Spanish", "Other"),
+                                after = c("Other")) 
+  
+
+```
+
 # Reassess Risk
 
-```{r outlier-rmd}
-#huh <- dRiskRMD(df_sdcobj) #all risk values were 0 - think this needs to compare original and transformed data 
+Very briefly
+
+### Categorical Variables
+
+k-anon vios and global risk reduction
+
+```{r global-risk-final}
+#based off cat vars
+print(sdcobj_final, "risk")
+```
+
+still a little high, might be suitable for release at the SUF level with restrictions
+
+we have achived k-anon for categorical variables with acceptable suppression. gloabl risk reduced, still high (require DSA with destruction and access requirements)
+
+### Continuous Variables
+
+distance based measures, outlier detection, small cell sizes when combined?
+
+```{r numeric-risk-distanceinterval}
+sdcobj_final@risk$numeric
+```
+
+```{r num-risk}
+print(sdcobj_final, "numrisk")
+```
+
+Above shows the percentage of observations that are within an interval centred on its recoded value. The upper bound (93.35%) represents a worse case scenario in which a motivated intruder knows each nearest value. This will be high since we only top coded most values to protect top __ % of students who were outliers. 
+
+
+"they check
+if the original value falls within an interval centered on the masked value. In this case, the
+intervals are calculated based on the standard deviation of the variable under consideration."
+
+
+suggests we protected our outliers because changed 7 % when only top coding and not changing other intervals, data utlity decreased drastically. 
+
+1sd of variable
+
+"The result 1 indicates that all (100 percent) the observations are outside the interval of 0.1 times the standard deviation around the original values."
+
+"The results are satisfactory, especially when keeping in mind that there are only 10 distinct values in the dataset (the means of each of the deciles). All outliers have been recoded. Looking at the proportions of the components, we do not detect any outliers (households with an unusual high or low spending pattern in one component)."
+
+
+
+outlier detection less useful here becuase loss of variability/range in continuous variables. Can look at freq tables or distributions again to observe changes/assess acceptability
+
+```{r}
+table(anon_df$gpa)
+
+table(anon_df$iss_off)
+
+table(anon_df$iss_days)
+
+table(anon_df$subj_off)
+
+```
+
+
+### Data Utility - same results with raw data
+
+only explain without any code for now? 
+
+orig data didnt have much relations to compare to since simulated for demonstration purposes. 
+
+
+
+regressions with raw and transformed data
+
+correlations
+
+```{r utility-check, include = FALSE}
+sim_dfn <- sim_df %>% 
+  mutate_if(is.factor, as.numeric)
+
+anon_dfn <- anon_df %>% 
+  mutate_if(is.factor, as.numeric)
+
+Hmisc::rcorr(as.matrix(sim_dfn))
+
+Hmisc::rcorr(as.matrix(anon_dfn))
+
+#regressions
+
+fit_orig <- lm(gpa ~ ., data = sim_df)
+summary(fit_orig)
+
+fit_anon <- lm(gpa ~ ., data = anon_df)
+summary(fit_anon)
+
 ```
 

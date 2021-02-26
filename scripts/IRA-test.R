@@ -101,3 +101,39 @@ freq_risk <- cbind(freq_counts, inriskvec) #- higher is worse. 1 = unique? indiv
 glrisk <- mean(inriskvec)
 
 glrisk
+
+
+
+# ```{r cont-vars-OLD}
+# #do after recoding to see if enough? 
+# calcRisks(sdcobj_final)
+# 
+# ```
+# 
+# ```{r interval-measure-OLD}
+# dRisk(sdcobj_final) #compares manip to raw data cont vars
+# 
+# dRisk(sdcobj_final, k = .005)
+# 
+# dRisk(obj = sdcobj_final@origData[,c('iss_off', 'iss_days')], xm = sdcobj_final@manipNumVars[,c('iss_off', 'iss_days')], k = 0.1)
+# ```
+
+####manually check cont variables? 
+
+# group by all cat vars and summarize min n (count, min value) for each cont var - e.g., cross tab by all cat vars and 
+# 
+# ```{r group-by}
+# 
+# anon_df <- extractManipData(sdcobj_final)
+# 
+# anon_df %>%
+#   group_by(grade_level, sex, race, econ_dis, disability, dis_cat, iss_days) %>%
+#   count() %>% 
+#   arrange(n)
+# 
+# ```
+
+#huh <- dRiskRMD(df_sdcobj) #all risk values were 0 - think this needs to compare original and transformed data 
+
+
+####data utility - same results with raw data
