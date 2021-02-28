@@ -310,6 +310,8 @@ after anonymization - compares raw with transformed data
 
 # Statistical Disclosure Control
 
+The challenge is finding a balance between modifying the data to protect student privacy and making sure the data still stay useful for their intended purpose (e.g., data analysis). 
+
 control for risk - reduce risk, then reassess
 
 explain sdc, brief overview of different types of methods (perturbative vs non perturbative with mention of pros/cons). state for our purpose we don't want to perturb (lose truthfulness) so will recode etc..  

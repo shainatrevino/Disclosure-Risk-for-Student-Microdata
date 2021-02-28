@@ -11,45 +11,87 @@ library(tidyverse)
 library(sdcMicro)
 ```
 
-need to make report style - with very small explained code chunks - view report templates
-
 #Overview
 
-DRA & SDC
+Under the Family Educational Rights and Privacy Act (FERPA), schools can release data to researchers without parent or student consent if the data is released under a [FERPA study exception](https://studentprivacy.ed.gov/sites/default/files/resource_document/file/FERPA%20Exceptions_HANDOUT_portrait.pdf) with a data sharing agreement or if the data has been properly de-identified. Proper data de-identification involves removing or altering all personally identifiable information (PII) from the data to minimize the disclosure risk of individuals. It is important to note that PII includes not only the obvious identifiable information about individuals (e.g., direct identifiers; names, student IDs, social security number, date of birth, address), but also any other information that can be used to identify an individual alone or in combination with other information that can be linked to the data (i.e., indirect identifiers). Thus, simply removing direct identifiers does not properly de-identify the data. Careful attention must be payed to the identification and altering of indirect identifiers to adequately reduce disclosure risk. 
 
-purpose, steps (DRA, SDC, reasses), explanation of data
+A disclosure occurs when an intruder can reveal the identity of an individual in the data set or learn confidential information about them. Thus, measuring disclosure risk involves calculating risk metrics related to an intruder's ability to identify individuals (i.e., re-identification risk). After assessing the re-identification risk of the original data, statistical disclosure control techniques can be applied to reduce disclosure risk to an appropriate level. There are no specific guidelines or methods to properly de-identify data because the re-identification risk varies depending on the structure, context, and purpose of the data. There may also be other federal, state, or local laws that require different levels of de-identification. 
 
-# Preprocessing
+For our purposes, we will be walking through the process of statistical disclosure control under FERPA with cross-sectional, student-level micro-data (i.e., one student per row). However, it is important to note that there are certain characteristics of micro-data files that can increase the likelihood of a disclosure (we only need to attend to the first): 
+
++ Existence of rare or detailed records (e.g., unique characteristics or extreme values)
+
++ Multilevel structure (i.e., if one level is too detailed, disclosure at other levels could be possible)
+
++ Linking to external sources (e.g., rare combinations of variables, shared linking keys)
+
++ Longitudinal structure (i.e., adding records over time could increase disclosure risk)
+
++ Census data (i.e., if an intruder knows who is in the data, disclosure is more likely) 
+
+Specifically, this blog will explain the basic steps of assessing disclosure risk and applying statistical disclosure control techniques with the `{sdcMicro}` package and briefly mention how to re-assess disclosure risk and data utility after transformation when releasing FERPA-compliant student micro-data. Code and data available on [GitHub](LINKREPO)
+
+## Data Description
+
+This data set was simulated to represent the distributions of administrative student variables that a researcher would potentially request access to. Thus, distributions and descriptive statistics represent a student population, however, relationships (e.g., correlations) among variables are not representative, nor realistic, and should not be interpreted. 
+
+When possible, the variables selected for de-identification and release should be limited to those necessary for data analysis in order to minimize disclosure risk and maximize data utility. Our data set includes a sample of 25,000 students and 13 variables including: 
+
++ `id`: study-specific randomized ID number for each student
+
++ `grade_level`: student's grade level
+
++ `sex`: student sex
+
++ `race`: student race/ethnicity
+
++ `gpa`: student's unweighted grade point averages 
+
++ `econ_dis`: student flagged as economically disadvantaged
+
++ `disability`: student flagged with a disability (i.e., individual education plan)
+
++ `dis_cat`: student disability type
+
++ `lang`: student first language
+
++ `iss_off`: count of behavior incidents that resulted in in-school suspension
+
++ `iss_days`: total number of days served in in-school suspension
+
++ `subj_off`: count of behavior incidents that were classified as subjective (i.e., subjective to interpretation) 
+
++ `days_absent`: total number of days absent
+
+We will use the `import()` and `here()` function to import our data and tidy it with the `{tidyverse}` package (e.g., modifying character variables to factors and defining missing values). It is important to verify that all variables are classified correctly (e.g., numeric or factor) and missing values are defined as `NA`.  
 
 
-## Import Data
+```{r import}
+sim_df <- rio::import(here::here("data", "sim_df.csv")) %>% #import data
+  mutate_if(is.character, as.factor) %>% #transform characters to factors
+  mutate_all(na_if, "") #transform blank cells to missing
 
-Chose variables, clean data (filter year, aggregate schools), random subsample, simulate data, export for use
-
-randomly simulated, similar descriptives/distributions, correlations are not maintained. 
-
-TAKE OUT DAYS ABSENT BECAUSE OF DISTRIBUTION ERROR
-
-explain variables and simulation
-
-```{r import, include = FALSE}
-sim_df <- rio::import(here::here("data", "sim_df.csv")) %>% 
-  mutate_if(is.character, as.factor) %>% 
-  mutate_all(na_if, "")
-#need to deal with missing data for characters/factors that are blank now
-
-#use str() to view variables and types - make sure correct 
+#use str() to view variables and types
 str(sim_df)
 ```
 
-## Understanding Data and Context
+# Preprocessing
 
-explore and understand data
+Before beginning the disclosure risk assessment, some decisions need to be made about the data and types of risks to be protecting against. 
+
+## Understand the Data and Context
+
+It can be very helpful to explore the variables and relations among variables in your data set. Looking at the distributions will give a sense of which variables have rare values and are more risky. It will be necessary to fully understand the structure and distributions of variables when making decisions for applying appropriate statistical disclosure techniques. 
+
+It is also crucial to understand the context in which the data is going to be released as this can affect the de-identification process. For example, data shared under a strict data sharing agreement may need less protection and can have a higher acceptable disclosure risk compared to data that is shared without such agreements or will be widely shared. 
+
+Understanding the data and data context makes it possible to develop what are called "motivated intruder scenarios." These intruder scenarios guide the types of protections that need to be applied to the data to appropriately reduce disclosure risk. To develop an intruder scenario, document the ways in which an individual in your data can be identified by an intruder. For example, our data includes many demographic variables, therefore an intruder could identify someone in our data set if they linked unique demographic variables with public registries that include identifiable information (e.g., voter registration, DMV records). Another scenario that is almost always present is the possibility of an inadvertent disclosure which can occur when there are unique combinations of demographic variables resulting in an accidental disclosure. Developing intruder scenarios can sometimes require the support of a subject matter expert to determine which auxiliary data sets are publicly available and contain similar information to the data set to be de-identified. 
 
 ## Selecting Key Variables (PII)
 define key variables
 
 - different scenarios
+- indirect identifiers (FERPA definition, reasonable person standard) - hardest part try multiple times
 - run many times with different keys and see which variables are leading to most risk (e.g., most suppression, most unique keys)
 - conservative (time-sensitive) all QIDs if data request is small enough (<20 vars, maybe 50)
 
