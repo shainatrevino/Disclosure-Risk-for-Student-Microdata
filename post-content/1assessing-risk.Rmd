@@ -77,7 +77,7 @@ str(sim_df)
 
 # Preprocessing
 
-Before beginning the disclosure risk assessment, some decisions need to be made about the data and types of risks to be protecting against. 
+Before beginning the disclosure risk assessment, some decisions need to be made about the data and types of risks to be protecting against. Direct identifiers should also be removed or obscured from the data in this step as disclosure risk assessment and control procedures are concerned with protecting indirect identifiers. 
 
 ## Understand the Data and Context
 
@@ -88,38 +88,38 @@ It is also crucial to understand the context in which the data is going to be re
 Understanding the data and data context makes it possible to develop what are called "motivated intruder scenarios." These intruder scenarios guide the types of protections that need to be applied to the data to appropriately reduce disclosure risk. To develop an intruder scenario, document the ways in which an individual in your data can be identified by an intruder. For example, our data includes many demographic variables, therefore an intruder could identify someone in our data set if they linked unique demographic variables with public registries that include identifiable information (e.g., voter registration, DMV records). Another scenario that is almost always present is the possibility of an inadvertent disclosure which can occur when there are unique combinations of demographic variables resulting in an accidental disclosure. Developing intruder scenarios can sometimes require the support of a subject matter expert to determine which auxiliary data sets are publicly available and contain similar information to the data set to be de-identified. 
 
 ## Selecting Key Variables (PII)
-define key variables
 
-- different scenarios
-- indirect identifiers (FERPA definition, reasonable person standard) - hardest part try multiple times
-- run many times with different keys and see which variables are leading to most risk (e.g., most suppression, most unique keys)
-- conservative (time-sensitive) all QIDs if data request is small enough (<20 vars, maybe 50)
+Arguably,  one of the most challenging parts of proper data de-identification under FERPA is the classification indirect identifiers, also called key variables in the data de-identification literature or PII in FERPA. FERPA defines indirect identifiers as including "information that, alone or in combination, is linked or linkable to a specific student that would allow a reasonable person in the school community, who does not have personal knowledge of the relevant circumstances, to identify the student with reasonable certainty" ([FERPA](https://www2.ed.gov/policy/gen/guid/fpco/pdf/ferparegs.pdf), p. 6). This vague definition is the reason why classifying indirect identifiers can be so difficult. 
 
-## Set up sdcMicro Object
+Classifying variables as indirect identifiers or non-identifiers should include consideration of intruder scenarios, conceptual understanding of variables and potential linkages, and exploring variable risk alone and in combination with one another (e.g., rare values, small cell sizes). It can be helpful to assess disclosure risk multiple times with different sets of indirect identifiers or intruder scenarios to understand how different variables affect disclosure risk (e.g., higher re-identification risk, increased suppression) and may be indirect identifiers. For our purposes, we will assume that all variables can be linked with a specific student when combined with other variables in the data set (e.g., only one Asian female student with disability that speaks German). This is a very conservative approach that defines all "real" PII under FERPA correctly, but may classify non-PII variables as indirect identifiers and thus decrease the utility of the transformed data more than necessary. Often, data utility will decrease drastically the more number of indirect identifiers you define, however, more privacy protection is applied.  
 
-creates object based on key variables that will have many different layers (including risk/utility metrics, original data, transformed data, etc.)
+# Disclosure Risk Assessment
+
+Once you understand your data, the environment for release, and the variables that are indirect identifiers, you can begin the process of assessing disclosure risk in your data set. To do this we will use the `{sdcMicro}` package and some functions from `{tidyverse}`. 
+
+## Set up the `{sdcMicro}` Object
+
+The first step of disclosure risk analysis in `{sdcMicro}` is to create an object that tells `R` which continuous and categorical variables should be considered indirect identifiers in your data set. This is implemented with the `createSdcObj()` function (as shown below) which results in a `{sdcMicro}` object with many different layers (e.g., original data, transformed data, risk/utility metrics, and many other configuration settings). Mostly everything that we do to assess risk and de-identify data will involve manipulating this object. 
 
 ```{r sdc-obj}
 #create object
 initial_sdcobj <- createSdcObj(dat = sim_df, #input data
-                               keyVars = c("grade_level", "sex", "race", "econ_dis", "disability", "dis_cat", "lang"), #categorical key variables
-                               numVars = c("gpa", "iss_off", "iss_days", "subj_off", "days_absent")) #continuous key variables
+                               keyVars = c("grade_level", "sex", "race", "econ_dis", "disability", "dis_cat", "lang"), #categorical indirect identifiers
+                               numVars = c("gpa", "iss_off", "iss_days", "subj_off", "days_absent")) #continuous indirect identifiers
 
 
 
 ```
 
-# Disclosure Risk Assessment
+For our `{sdcMicro}` object, we specified our original data, the categorical indirect identifiers, and the continuous indirect identifiers. There are many other arguments that you can specify if needed (e.g., sampling weights, PRAM values) - just see the help documentation. 
 
-explain DRA (cont and cat differences) 
+##Categorical Variables
 
-assessing risk
+The methods for disclosure risk assessment and control differ for continuous vs. categorical variables (this is why they are defined separately in the object above). For categorical variables, 
 
 Make sure there are similar unique cases/riskiness in simulated data
 
-no sampling weights - so risk might be overestimated
-
-##Categorical Variables
+explain DRA (cont and cat differences)
 
 ### K-anon violations
 
