@@ -11,7 +11,7 @@ library(tidyverse)
 library(sdcMicro)
 ```
 
-#Overview
+# Overview
 
 Under the Family Educational Rights and Privacy Act (FERPA), schools can release data to researchers without parent or student consent if the data is released under a [FERPA study exception](https://studentprivacy.ed.gov/sites/default/files/resource_document/file/FERPA%20Exceptions_HANDOUT_portrait.pdf) with a data sharing agreement or if the data has been properly de-identified. Proper data de-identification involves removing or altering all personally identifiable information (PII) from the data to minimize the disclosure risk of individuals. It is important to note that PII includes not only the obvious identifiable information about individuals (e.g., direct identifiers; names, student IDs, social security number, date of birth, address), but also any other information that can be used to identify an individual alone or in combination with other information that can be linked to the data (i.e., indirect identifiers). Thus, simply removing direct identifiers does not properly de-identify the data. Careful attention must be payed to the identification and altering of indirect identifiers to adequately reduce disclosure risk. 
 
@@ -104,138 +104,132 @@ The first step of disclosure risk analysis in `{sdcMicro}` is to create an objec
 ```{r sdc-obj}
 #create object
 initial_sdcobj <- createSdcObj(dat = sim_df, #input data
-                               keyVars = c("grade_level", "sex", "race", "econ_dis", "disability", "dis_cat", "lang"), #categorical indirect identifiers
-                               numVars = c("gpa", "iss_off", "iss_days", "subj_off", "days_absent")) #continuous indirect identifiers
-
-
+                               keyVars = c("grade_level", "sex", "race", "econ_dis", 
+                                           "disability", "dis_cat", "lang"), #categorical indirect identifiers
+                               numVars = c("gpa", "iss_off", "iss_days", 
+                                           "subj_off", "days_absent")) #continuous indirect identifiers
 
 ```
 
 For our `{sdcMicro}` object, we specified our original data, the categorical indirect identifiers, and the continuous indirect identifiers. There are many other arguments that you can specify if needed (e.g., sampling weights, PRAM values) - just see the help documentation. 
 
-##Categorical Variables
+## Categorical Variables and *k*-anonymity
 
-The methods for disclosure risk assessment and control differ for continuous vs. categorical variables (this is why they are defined separately in the object above). For categorical variables, 
+The methods for disclosure risk assessment and control differ for continuous vs. categorical variables (this is why they are defined separately in the object above). For categorical variables, disclosure risk can be assessed by calculating cross-tab frequency counts and the probability that an individual is unique or can be easily identified in the data set (e.g., small cell sizes). For this blog we will use the concept of *k*-anonymity to assess and control for disclosure risk of categorical variables. 
 
-Make sure there are similar unique cases/riskiness in simulated data
+*k*-anonymity is a traditional privacy model that can be used to reduce re-identification risk. To achieve *k*-anonymity there needs to be at least *k* individuals with the same responses on all indirect identifiers for every combination of values in the indirect identifiers. The value of *k* should be specified in advance depending on a threshold for acceptable re-identification risk. For example, *k* = 2 means that there are no unique individuals in the data set since everyone will at least have 1 other individual with the same responses on all indirect identifiers and will not be distinguishable. However, the highest re-identification risk is still 50% since intruders have a 50/50 chance of identifying the correct individual when *k* = 2. 
 
-explain DRA (cont and cat differences)
+Alternatively, 5-anonymity will require at least 5 individuals to have the same responses on all variables and will have a highest re-identification risk of 20%. There are no specific guidelines for which *k* threshold to us. Statisticians have recommended a minimum *k* value of at least 3-5 for privacy preserving data publishing but determining the exact threshold should take into account local or state laws as well as the data environment for release. It may be necessary to select a higher threshold if the data will be publicly shared or archived (e.g., *k* = 10+). 
 
-### K-anon violations
+*k*-anonymity is best suited when assessing and controlling for population uniqueness. It can be used for sample uniqueness, but will often overestimate the re-identification risk unless sampling weights are included in the de-identification process. For a more detailed definition of sample vs. population uniqueness see [International Household Survey Network](http://www.ihsn.org/anonymization-risk-measure). There were no sampling weights included in the `sdcMicro` object we created which means we are controlling for sample uniqueness assuming our sample of the student population. We will be using *k* = 5 for our threshold to release de-identified student data to a set of approved researchers under a data sharing agreement. 
 
-Define k-anon, mention that is our privacy model with 5 as threshold for public use non FERPA exception
-violations, uniqueness, etc.
+### *k*-anonymity Violations
+
+One simple way to assess disclosure risk of categorical indirect identifiers is to calculate the number of observations in the data set that violate *k*-anonymity. In other words, the number of individuals with unique or risky (i.e., small cell size) responses. To view the number of individuals that violate *k*-anonymity for *k* = 2, 3, and 5, use `print()` on the `{sdcMicro}` object we created above:
 
 ```{r k-anon-vio-sdcobj}
 print(initial_sdcobj)
-
-
- 
 ```
 
-```{r kten}
+The above output shows that about 5% of students are unique in the sample (i.e., violate 2-anonymity) and 13% of students are below our specified re-identification risk threshold (5-anonymity). To calculate the number of individuals violating *k*-anonymity at higher thresholds we can use the `kAnon_violations()` function: 
 
-kvio <- kAnon_violations(initial_sdcobj, FALSE, 10)
+```{r kten, results = FALSE}
+
+kvio <- kAnon_violations(initial_sdcobj, #sdcMicro object
+                         weighted = FALSE, #no sampling weights
+                         k = 10) #k value threshold
 print(kvio)
 
 ```
-
-```{r k-anon-vio-info}
-#how does this look when rendered? - want to show size of smallest N table here and when comparing raw and transformed
-initial_sdcobj
+```{r kten-render, echo = FALSE}
+kvio[1]
 ```
 
-
+The above shows the number of students violating 10-anonymity is `r kvio[1]` (`r round(kvio[1] / nrow(sim_df), 4) * 100`%).
 
 ### Global Risk
 
-Define
+Global risk refers to the average re-identification risk of the entire data set. It is calculated by aggregating all individual risk scores (described below). When we first created our `{sdcMicro}` object, global and individual risk metrics were calculated and stored within the `{sdcMicro}` object. To access it we `print()` the `"risk"` metric of our `{sdcMicro}` object:
 
 ```{r global-risk-OLD}
 print(initial_sdcobj, "risk")
 ```
 
-global risk = (.1110) = "expected proportion of all individuals in the sample that could be re-identified by an intruder." average potential for successful re-identification is 11.10%.  
+The global risk is `r round(initial_sdcobj@originalRisk$global$risk, 4)`, indicating that a motivated intruder could potentially identify `r round(initial_sdcobj@originalRisk$global$risk_ER)` (`r round(initial_sdcobj@originalRisk$global$risk, 4) * 100`) of students , on average. This risk is very high, but is likely overestimated since we are not using sampling weights and thus assumes the intruder knows which individuals are included in the sample. The output also shows that 5395 students have individual risk metrics that are operating differently compared to the majority of individual risk metrics (e.g., lower or higher). I find this measure less helpful, but it is interesting that it is the same as the 10-anonymity violations we calculated. After applying statistical disclosure control methods, we expect to see the global risk metrics reduce - especially the expected number of re-identifications. 
 
-number of expected re-identifications = n(25000) * global risk (.1110) = 2,774 - motivated intruder could identify. 
-
-no. with more than average risk
-
-
-
+It is important to note that global risks should be not be given too much weight when assessing disclosure risk. Although global risk metrics are easy to compute, they are aggregate measures that don't take into account unique individuals in the data set. It is possible to have an acceptable global risk but still have unique or high risk individuals in the data set. Thus, investigating individual risk is important when assessing disclosure risk. We did this briefly when calculating *k*-anonymity violations, but will want to look at individual risk in more depth next. 
 
 ### Individual Risk and Sample Frequencies/Uniqueness
 
-- include table that shows relation of k-anon and individual risk %? or explain verbally
+Individual risk is directly related to *k*-anonymity and refers to the probability of correctly re-identifying each individual student. As mentioned above, an individual that is 2-anonymous (i.e., in an equivalence class of 2) will have an individual risk of .5 indicating an intruder has a 50% chance of identifying this student successfully, whereas a unique individual will have an individual risk of 1 (100%). Alternatively, when an individual has the same responses as many others in the data set, they will all have a lower individual re-identification risk. 
 
-f(k) frequency count of each key
+Individual risk metrics were already calculated and stored when we created the initial `{sdcMicro}` object. To view the individual risk for each observation, we extract the risk metrics and frequency counts (i.e., number of individuals who have the same responses on all indirect identifiers) and combine them with the original data set. 
 
-```{r samp-freq-risk}
-ind_risk <- data.frame(initial_sdcobj@risk$individual) %>% 
-  select(-Fk) #get ind risk and freq counts
+
+```{r samp-freq-risk, results = FALSE}
+ind_risk <- data.frame(initial_sdcobj@risk$individual) %>% #extract risk metrics
+  select(-Fk) #de-select population metric
 
 ind_risk_df <- cbind(sim_df, ind_risk) #combine with data
 
+head(ind_risk_df, 10)
 
 ```
 
-```{r samp-uniq}
-#view data
+```{r samp-freq-risk-render, echo = FALSE}
 ind_risk_df %>% 
-  arrange(desc(risk)) %>% 
-  head(10)
-#individuals with high risk
+  select(id, where(is.factor), risk, fk) %>% 
+  head(10) %>% 
+  as_tibble()
 ```
 
+This will give you a data frame that includes the individual risk metrics (`risk`) and frequency counts for that combination for responses (`fk`). For example, we can see the 3rd observation is unique (i.e., only one person has this combination of responses in the data set) and has a 100% individual re-identification risk, whereas the 1st observation shares the same responses with 198 other individuals resulting in low re-identification risk (0.5%).
 
-#### Unique Variable Response Combinations
+It is important to note that missing values will affect the calculation of individual risk and frequency counts (`fk`). If there are missing values in a combination, the frequency count will include the count of all possible responses for the missing value. For example, the response [10th Grade, Female, White] may have a combined frequency (`fk`) of 198, and the response [10th Grade, Male, White...] `fk` = 189. However an individual a missing value for `sex` [10th Grade, NA, White...] would have a combined frequency of `r 198+189` (198 + 189) and a much higher individual risk metric. Thus, it is very important to make sure that missing values are not identifiable.
 
-can aggregate indivudlas to combos of key variables
+Observing the individual risk metrics for each student in the data can be helpful to see which individuals have unique responses (i.e., filter when `fk` = 1) or are under a certain threshold (e.g., 5-anonymity). However, it is often more useful to look at sample frequencies and risk for each combination of responses possible instead of for each student. 
+
+
+#### Risky Variable Response Combinations
+
+We will use various functions from the `{tidyverse}` package to aggregate the individual risk metrics for each variable response combination:
 
 ```{r agg-freq-keys}
-#aggregate for keys (using tidyverse)
 var_combos <- ind_risk_df %>% 
-  select(id, where(is.factor), risk, fk) %>% 
-  group_by(grade_level, sex, race, econ_dis, disability, dis_cat, lang) %>%  #prespecified vector
-  summarize(risk = mean(risk),
+  select(id, where(is.factor), risk, fk) %>% #select variables
+  group_by(grade_level, sex, race, econ_dis, disability, dis_cat, lang) %>%  #group by all responses
+  summarize(risk = mean(risk), #aggregate risk metrics
             freq = mean(fk),
             .groups = "keep")
 
-head(var_combos)
+var_combos
 
 ```
+The resulting data frame shows the `r nrow(var_combos)` possible response combinations for our categorical indirect identifiers and the corresponding risk metrics. You can see that the first response combination is unique, whereas the second combination has 11 students with those responses. 
+
+Next, we can filter each combination to show us only the unique response combinations: 
+
 ```{r agg-uniq}
-#sort high risk - filter unique
 uniq <- var_combos %>% 
   filter(freq == 1)
 
-head(uniq)
-
+uniq
 ```
 
-define k-anon privacy model and 5 threshold for public use non-FERPA exception
+We already know from calculating the *k*-anonymity violations above that there are `r nrow(uniq)` unique individual responses in our data set. However, it is helpful to explore the pattern of unique responses to see which variables or response options are leading to high re-identification risk. 
+
+It is useful to also filter variable response combinations for those that are under our threshold. Since we are using 5-anonymity as our privacy model, we filter for response combinations with less than 5 students: 
 
 ```{r agg-risk}
-
-#filter high risk past threshold
+#filter high risk
 risky <- var_combos %>% 
-  filter(freq <= 5) %>% 
-  arrange(freq)
+  filter(freq < 5)
 
-head(risky)
+risky
 
-
-#aggregate for keys (combos), not rows
-#sort by high risk
 ```
 
-
-
-
-use this: https://sdcpractice.readthedocs.io/en/latest/measure_risk.html#count-of-individuals-with-risks-larger-than-a-certain-threshold
-
-
-
+The resulting data frame shows the risk metrics for the `r nrow(risky)` possible response combinations that are under our threshold. Similar to the above step, it can be helpful here to explore this data frame for patterns of risky responses to see if there are certain variables or response options that are most often leading to risky variable combinations. 
 
 ## Continuous Variables
 

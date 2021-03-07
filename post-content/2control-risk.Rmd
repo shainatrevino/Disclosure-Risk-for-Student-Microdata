@@ -131,6 +131,8 @@ tbcode_sdcobj <- topBotCoding(obj = tbcode_sdcobj, #object created above when to
 
 ## View initial suppression values for categorical variables
 
+traditional methods remove all rows (13% of data) which reduces data utility and disportportioaltely affects minority subgroups
+
 runtime can be long - computationally intense - more so with more categorical variables and response options
 
 only categorical variables in sdcobject - can inlcude importance ranking
@@ -300,3 +302,5 @@ orig data didnt have much relations to compare to since simulated for demonstrat
 regressions with raw and transformed data
 
 correlations
+
+## Resources
