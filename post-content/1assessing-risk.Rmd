@@ -8,6 +8,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
+library(scales)
 library(sdcMicro)
 ```
 
@@ -205,7 +206,7 @@ var_combos <- ind_risk_df %>%
 var_combos
 
 ```
-The resulting data frame shows the `r nrow(var_combos)` possible response combinations for our categorical indirect identifiers and the corresponding risk metrics. You can see that the first response combination is unique, whereas the second combination has 11 students with those responses. 
+The resulting data frame shows the `r comma(nrow(var_combos))` possible response combinations for our categorical indirect identifiers and the corresponding risk metrics. You can see that the first response combination is unique, whereas the second combination has 11 students with those responses. 
 
 Next, we can filter each combination to show us only the unique response combinations: 
 
@@ -216,7 +217,7 @@ uniq <- var_combos %>%
 uniq
 ```
 
-We already know from calculating the *k*-anonymity violations above that there are `r nrow(uniq)` unique individual responses in our data set. However, it is helpful to explore the pattern of unique responses to see which variables or response options are leading to high re-identification risk. 
+We already know from calculating the *k*-anonymity violations above that there are `r comma(nrow(uniq))` unique individual responses in our data set. However, it is helpful to explore the pattern of unique responses to see which variables or response options are leading to high re-identification risk. 
 
 It is useful to also filter variable response combinations for those that are under our threshold. Since we are using 5-anonymity as our privacy model, we filter for response combinations with less than 5 students: 
 
@@ -226,110 +227,222 @@ risky <- var_combos %>%
   filter(freq < 5)
 
 risky
-
 ```
 
-The resulting data frame shows the risk metrics for the `r nrow(risky)` possible response combinations that are under our threshold. Similar to the above step, it can be helpful here to explore this data frame for patterns of risky responses to see if there are certain variables or response options that are most often leading to risky variable combinations. 
+The resulting data frame shows the risk metrics for the `r comma(nrow(risky))` possible response combinations that are under our threshold. Similar to the above step, it can be helpful here to explore this data frame for patterns of risky responses to see if there are certain variables or response options that are most often leading to risky variable combinations. 
 
 ## Continuous Variables
 
-most often looked at after anonymization and compared. 
+The concept of *k*-anonymity and uniqueness often does not apply when measuring risk of continuous variables since continuous variables can have infinite values and would make most individuals unique when looking at frequencies of combined variables responses. For continuous variables, disclosure risk is often measured with probabilistic or distance-based metrics and by exploring outliers. While exploring distributions and outliers can give you a sense of the amount of risk (e.g., skewness) in continuous variables, probabilistic and distance-based risk metrics have to be calculated after applying statistical disclosure control techniques because they compare the transformed data to the raw data to assess re-identification risk. 
 
-uniqueness does not apply - distance/neighbor based measures (record linkage, interval measure) and outlier detection
+Two distance-based risk metrics are calculate when using `{sdcMicro}`: record linkage and interval measures. Both metrics are based on similarity or uniqueness among transformed values and how close those values are to the original values (e.g., in the same neighborhood of values). Thus, these measures are most useful when using statistical disclosure techniques that alter the true data values (i.e., perturbative methods), such as adding statistical noise to variables. As discussed in later sections, we will not be using perturbative methods which makes these distance-based metrics less useful in our case. The calculation of these risk metrics are discussed in later sections after applying disclosure control methods. 
 
-sdcmicro has functions for comparing afterwards, but not looking at before so we will just explore distributions and outliers. 
+To assess risk of our continuous variables before applying de-identification techniques, we will explore the distributions of our continuous variables and look for rare values. 
+
 
 #### Explore distributions
 
-Look at distributions - plots
+To plot basic frequency distributions of our continuous variables we can use the `hist()` function for each continuous variable in our original data set (`sim_df`), such as for `gpa`:
 
--skewness
-
--gpa is potentially not identifier, may not need top/bottom code
-
-```{r plot-cont}
-#make plot function
-#plot all cont vars
-#show code for hist() function since it is easy
-
+```{r gpa-code, eval = FALSE}
+#plot for gpa from original data
 hist(sim_df$gpa)
+```
 
+```{r gpa-render, echo = FALSE}
+hist(sim_df$gpa,
+     main = "Histogram of gpa",
+     xlab = "gpa")
+```
+
+We can do the same for all other continuous variables: 
+
+```{r plot-cont, eval = FALSE}
+#plot each continuous variable 
 hist(sim_df$iss_off)
-
 hist(sim_df$iss_days)
-
+hist(sim_df$subj_off)
 hist(sim_df$days_absent)
 
-#partition into one plot with the 4 windows for knitting
-
-```
-Look at these distributions in more detail (below)
-
-### Outlier Detection/Explore Tails
-
-no. oberservations and viewing values in tails (freq table)
-
-"identifying the values of a continuous variable that are larger than a predetermined p%-percentile might help identify outliers, and thus units at greater risk of identification. The value of p depends on the skewness of the data."
-
-```{r outliers}
-#calculate frequency (or % of sample) of p% percentile for each cont variable
-
-#view largest and smallest values for top% (and bottom if not skewed)
 ```
 
-skewness and number of observations in tails (of skewed variables above)
+```{r plot-cont-render, echo = FALSE, fig.width = 9, fig.height = 14}
+par(mfrow = c(2, 2))
+
+hist(sim_df$iss_off,
+     main = "Histogram of iss_off",
+     xlab = "iss_off")
+
+hist(sim_df$iss_days,
+     main = "Histogram of iss_days",
+     xlab = "iss_days")
+
+hist(sim_df$subj_off,
+     main = "Histogram of subj_off",
+     xlab = "subj_off")
+
+hist(sim_df$days_absent,
+     main = "Histogram of days_absent",
+     xlab = "days_absent")
+```
+
+These plots show that `gpa` is the only variable with a normal distribution, whereas the three discipline variables (e.g., `iss_off`, `iss_days` and `subj_off`) and `days_absent` are highly skewed and thus have a higher re-identification risk. It also seems that `gpa` has already been truncated and could be considered a categorical variable and assessed with *k*-anonymity or grouped into intervals. The discipline variables are so skewed that it is hard to see the values of the tails. Will we want to look at these distributions in more detail, especially the values in the tails to help determine how much protection (i.e., top/bottom coding) we should apply to reduce re-identification risk. 
+
+### Explore Tails for Rare Values
+
+When there are only a few individuals with high values for a variable, such as for our discipline values above, the potential for re-identification is high. Thus, it is helpful to understand which values of continuous variables are rare responses. Exploring the tails of distributions can help detect outliers and threshold values (i.e., a value in which any response above or below leads to rare values). This can be done by examining frequency tables for continuous variables, but those can be cumbersome to look through especially when there is a large range. We will use the `quantile()` function to calculate values that represent different percentiles of the sample (e.g., values of top 10%) in addition to looking at frequency tables to explore rare values. 
+
+The first continuous variable is `gpa` which does have a normal distribution. Therefore, we will want to look at the values in both tails (i.e., top and bottom percentiles). We can calculate the values based on default quantiles in this case (e.g., 25%, 50%, and 75% percentiles): 
 
 ```{r outlier-detect}
-#gpa
+#percentiles
 quantile(sim_df$gpa, c(0, .25, .5, .75, 1), na.rm = TRUE) 
+```
+
+The output shows that the range of `gpa` values is 1 - 4, the bottom 25% of students have a GPA of 2.33 or lower, and the top 25% of students have a GPA of 3.00 or higher. If possible, it is useful to determine a percentile threshold in advance in which values above/below that threshold will be considered risky. Then, you can calculate those percentiles specifically to see which/how many individuals have responses beyond that threshold. This will also help when determining how much protection to apply when using statistical disclosure control techniques. However, thresholds are often very difficult to determine and should consider the type of data release, sample size, skewness, and all intruder/disclosure scenarios discussed in previous sections. 
+
+Since `gpa` seems to already be aggregated (i.e., not truly continuous) and has such a small range, it will likely be more helpful to look at the frequency table for `gpa` instead of calculating different percentiles - especially since we do not have *apriori* thresholds. We can calculate basic frequency tables with the `table()` function: 
+
+```{r outlier-detect-freq, eval = FALSE}
+#frequency table
 table(sim_df$gpa)
 ```
 
-```{r outlier-detect2}
-#days absent
-quantile(sim_df$days_absent, c(0, .25, .5, .75, 1), na.rm = TRUE) #high skew so look at high quantiles
-quantile(sim_df$days_absent, c(.80, .85, .90, .95, 1), na.rm = TRUE) #look to chose top code value (trade off of utility and cell size)
-table(sim_df$days_absent)
-
+```{r outlier-detect-freq-render, echo = FALSE, results = 'asis'}
+#frequency table for HTML rendering
+knitr::kable(t(table(sim_df$gpa))) %>% 
+  kableExtra::kable_styling(full_width = FALSE, position = "left")
 ```
 
-seems to already been binned/aggregated so that is already protected as we do not know the exact value for each student - could make sense to make categorical or top/bottom code (below 2, above 3.5 - although other categories seem categorical)
+The frequency table shows that the bottom three values (1, 1.33, and 1.67) and the highest value (4.0) have significantly less responses compared to the middle values, and that values below 1.67 have a very high re-identification risk (less than .01% of sample). The table also confirms that `gpa` has already been aggregated from its continuous form and could be considered less risky because exact responses cannot be known with 100% certainty since we do not know the rounding rules applied. 
 
-discipline data more skewed
-
-suspension data is more skewed so we will only look at values of top tails
+Since the other continuous variables are highly skewed, it makes more sense to calculate percentiles for the tail of the distributions. For our second variable, `iss_off`, we will calculate values for the top 80+ percentiles and view the top 95+ percentiles with more granularity: 
 
 ```{r outlier-disc}
-#in school suspensions
-quantile(sim_df$iss_off, c(.80, .85, .90, .95, 1), na.rm = TRUE)
-quantile(sim_df$iss_off, c(.95, .96, .97, .98, .99, 1), na.rm = TRUE)
+#in school suspensions percentiles
+quantile(sim_df$iss_off, c(.80, .85, .90, .95, .95, .96, .97, .98, .99, 1), na.rm = TRUE)
+```
+
+The output shows that ~90% of students are reporting no in-school suspensions, about 97% of student reported 3 or less suspensions, and the top 1% of students reported at least 6 suspensions. This variable has many rare, high values that will need to be protected.
+
+Although the above output provides sufficient information to determine the rare values of `iss_off`, I usually always inspect frequency tables unless there are just too many possible values to make sense of. It is often useful to see the frequency of responses for all values, especially if there are not pre-determined thresholds for percentiles to protect against. Here is the frequency table for `iss_off` (produced with minor edits to be more readable):
+
+```{r outlier-disc-table, eval = FALSE}
+#frequency table
 table(sim_df$iss_off)
 
 ```
 
+```{r outlier-disc-table-render, echo = FALSE, results = 'asis'}
+ift <- data.frame(table(sim_df$iss_off)) %>% 
+  pivot_wider(names_from = Var1, values_from = Freq)
+
+par(mfrow = c(2,1))
+knitr::kable(ift[,1:12]) %>% 
+  kableExtra::kable_styling(full_width = FALSE, position = "center")
+knitr::kable(ift[,13:26]) %>% 
+  kableExtra::kable_styling(full_width = FALSE, position = "center")
+
+```
+
+Consistent with the percentile calculations, the frequency counts become drastically smaller when the response is 6 in-school suspensions or more. The table also shows that most values over 10 have less than 10 respondents, and values over 19 start to become unique. 
+
+We will calculate the same percentiles for our remaining continuous variables since they were all highly skewed. For `iss_days`: 
+
 ```{r outlier-disc2}
-#suspension days
-quantile(sim_df$iss_days, c(.80, .85, .90, .95, 1), na.rm = TRUE)
-quantile(sim_df$iss_days, c(.95, .96, .97, .98, .99, 1), na.rm = TRUE)
+#percentiles
+quantile(sim_df$iss_days, c(.80, .85, .90, .95, .96, .97, .98, .99, 1), na.rm = TRUE)
+
+```
+
+We can see that, again, ~90% of students reported no days of in-school suspension. The top 1% of students reported at least 7 days in suspension but the max value is 31. We could calculate values at higher percentiles (>99%), but instead we will look at the frequency of all responses again: 
+
+
+
+```{r outlier-disc2-table, eval = FALSE}
+#frequency table
 table(sim_df$iss_days)
 
 ```
 
+```{r outlier-disc2-table-render, echo = FALSE, results = "asis"}
 
-```{r outlier-disc3}
-#subjective offenses
-quantile(sim_df$subj_off, c(.80, .85, .90, .95, 1), na.rm = TRUE)
-quantile(sim_df$subj_off, c(.95, .96, .97, .98, .99, 1), na.rm = TRUE)
-table(sim_df$subj_off)
+dft <- data.frame(table(sim_df$iss_days)) %>% 
+  pivot_wider(names_from = Var1, values_from = Freq)
+
+par(mfrow = c(2,1))
+knitr::kable(dft[,1:13]) %>% 
+  kableExtra::kable_styling(full_width = FALSE, position = "center")
+knitr::kable(dft[,14:28]) %>% 
+  kableExtra::kable_styling(full_width = FALSE, position = "center")
+
 ```
 
-options - severe top code, bin into categories and treat as categorical to keep higher values, restrict access/share under FERPA exception
+From the frequency table, it is possible to see more detail about the spread of responses, especially at higher values. Although values over 7 represent only 1% of students, responses seem to start becoming rare (i.e., almost unique) after 13 days in suspension. 
+
+The next continuous variable is a count of subjective offenses, `subj_off`: 
+
+```{r outlier-disc3}
+#percentiles
+quantile(sim_df$subj_off, c(.80, .85, .90, .95, .96, .97, .98, .99, 1), na.rm = TRUE)
+```
+
+Similar to the discipline variables above, the majority of students have zero subjective offenses (~80%). However, there seems to be more spread in responses for this variable. For example, more students reported at least 1 offense and higher counts in general compared to the previous variables. Let's take a look at the frequency table: 
+
+```{r outlier-disc3-table, eval = FALSE}
+#frequency table of subjective offenses
+table(sim_df$subj_off)
+
+```
+
+```{r outlier-disc3-render-twochunks, results = "asis", echo = FALSE}
+sft <- data.frame(table(sim_df$subj_off)) %>% 
+  pivot_wider(names_from = Var1, values_from = Freq)
+
+par(mfrow = c(2,1))
+knitr::kable(sft[,1:10]) %>% 
+  kableExtra::kable_styling(full_width = FALSE, position = "center")
+knitr::kable(sft[,11:21]) %>% 
+  kableExtra::kable_styling(full_width = FALSE, position = "center")
+```
+
+Consistent with the percentile calculations, frequencies for values around 9-11+ start decreasing drastically. We can also see that values above 13 start becoming very rare (i.e., almost unique).  
 
 
-### A Posteriori Measures - or just mention in intro then talk about in reassess (last) section
+The last continuous variable, `days_absent`, was also highly skewed but it had a much larger range (0-116). Thus, there will be more individuals with rare responses in the tails. Once again, we will first calculate the values corresponding to sample percentiles in the tail of the distribution: 
 
-distnace/neighbor based measures (record linkage, interval measure)
+```{r outlier-detect2}
+#percentiles
+quantile(sim_df$days_absent, c(.80, .85, .90, .95, .96, .97, .98, .99, 1), na.rm = TRUE) 
+```
 
-after anonymization - compares raw with transformed data
+The percentiles show that much more of the distribution is in the tails for number of days absent, compared to the previous discipline variables. About 80% of students had at least 4 days absent, the top 5% and 1% of students had at least 11 or 30 days absent, respectively. It may be useful to calculate different percentiles for this variable, but as you can probably tell by now, I prefer to look at the full frequency distribution. Thus, I would still calculate a frequency table for `days_absent` even though there are many values: 
 
-later post describes how to compute and interpret interval measure
+```{r outlier-detect2-table, eval = FALSE}
+#frequency table
+table(sim_df$days_absent)
+
+```
+
+```{r outlier-detect2-table- render, echo = FALSE, results = "asis"}
+aft <- data.frame(table(sim_df$days_absent)) %>% 
+  pivot_wider(names_from = Var1, values_from = Freq)
+
+par(mfrow = c(3,1))
+knitr::kable(aft[,1:20]) %>% 
+  kableExtra::kable_styling( position = "center")
+knitr::kable(aft[,21:46]) %>%
+  kableExtra::kable_styling( position = "center")
+knitr::kable(aft[,47:70]) %>%
+  kableExtra::kable_styling( position = "center")
+
+```
+
+From the frequency table, we can see that the cell sizes for values 0-14 are actually pretty high and in the triple digits. Values after 14 start becoming increasingly small and potentially risky, whereas values past 38 days have counts in the single digits and could be considered rare responses (depending on your threshold). There are also many unique values in the extreme tail of the distribution (starting at 51 days) that will lead to high re-identification risk.    
+
+Although exploring the distributions of continuous variables does not give you a definitive re-identification risk value, it does provide information about the amount of risky responses present in that variable. In later sections we will use this information to determine how much protection to apply for these continuous variables. Ultimately, we will want to assess the risk of our continuous (and categorical) variables after we apply statistical disclosure control methods to make sure we are protecting the risky response appropriately. The next section will go through the statistical disclosure control process. 
+
+# SDC METHODS: 
+
+
+

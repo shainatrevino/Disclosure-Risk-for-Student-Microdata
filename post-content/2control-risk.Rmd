@@ -11,97 +11,112 @@ library(tidyverse)
 library(sdcMicro)
 #references outcomes of other post
 
-```
-
-# Statistical Disclosure Control
-
-The challenge is finding a balance between modifying the data to protect student privacy and making sure the data still stay useful for their intended purpose (e.g., data analysis). 
-
-control for risk - reduce risk, then reassess
-
-explain sdc, brief overview of different types of methods (perturbative vs non perturbative with mention of pros/cons). state for our purpose we don't want to perturb (lose truthfulness) so will recode etc..  
+sim_df <- rio::import(here::here("data", "sim_df.csv")) %>% #import data
+  mutate_if(is.character, as.factor) %>% #transform characters to factors
+  mutate_all(na_if, "") #transform blank cells to missing
 
 
-GET INFO FROM TUTORIAL RMD (VIEWING SDCOBJ ETC.)
-
-privacy method - kanonymity (choosing k of 5 to be shared with researchers w/o FERPA exception but with DSA that stipulated data destruction - etc. other things that reduce risk)
-
-## Set up sdcMicro Object
-
-creates object based on key variables that will have many different layers (including risk/utility metrics, original data, transformed data, etc.)
-
-```{r sdc-obj}
 #create object
 initial_sdcobj <- createSdcObj(dat = sim_df, #input data
-                               keyVars = c("grade_level", "sex", "race", "econ_dis", "disability", "dis_cat", "lang"), #categorical key variables
-                               numVars = c("gpa", "iss_off", "iss_days", "subj_off", "days_absent")) #continuous key variables
-
+                               keyVars = c("grade_level", "sex", "race", "econ_dis", 
+                                           "disability", "dis_cat", "lang"), #categorical indirect identifiers
+                               numVars = c("gpa", "iss_off", "iss_days", 
+                                           "subj_off", "days_absent")) #continuous indirect identifiers
 
 
 ```
 
-## Recode continuous variables
+# Statistical Disclosure Control Methods
 
-cont variables dealt with differently
+Statistical disclosure control (SDC) is a process meant to de-identify data so that is can be archived or released. The aim is to find a balance between maximizing privacy protection and minimizing information loss so that the data is protected but still useful for analysis. SDC methods are used to achieve an appropriate level of disclosure risk by altering the data in various ways. Perturbative methods alter the values of continuous variables so that the "true" responses of individuals cannot be known but the statistical properties of the variable remain intact. These methods include adding statistical noise, Post-Randomization Method (PRAM), micro-aggregation, and shuffling. Non-perturbative methods reduce the level of detail among variables without altering the original values, such as global recoding, top/bottom coding continuous variables, and local suppression. Generating synthetic data that maintains the statistical properties and relations of the original data is also an acceptable SDC method. Both perturbative and non-perturbative methods can be implemented in `{sdcMicro}`, however, synthetic data generation requires other R packages (e.g., [simPop](https://www.jstatsoft.org/article/view/v079i10)) or software. 
 
-could change gpa to intervals, but since middle values have high freq - looks already factored - we will just top and bottom code this to make equal N groups. - may not be as useful to analyst if variable of interest. 
+For this blog, we will be using non-perturbative SDC methods to reduce the amount of disclosure risk to an acceptable level in our data. Similar to assessing disclosure risk, different SDC methods are often used for continuous vs. categorical variables. As mentioned in previous sections, the desired level of disclosure risk is a complicated decision that should be decided by the data custodian, data providers, and based on any relevant legislative regulations. In our case, we will apply SDC methods to top/bottom code at least the top/bottom 0.1% of students while also protecting cell sizes smaller than 10 for continuous variables. For categorical variables, we will use SDC methods to achieve 5-anonymity. 
 
-use sdcMicro object we created and save over it (or create new object)
 
-```{r cont-recoding}
+## Recode Continuous Variables
 
-#change gpa into intervals based on values we have? 
-#possible to group and rename continuous variables? - 1-2 (2 or below); 3.6-4 (above 3.5); others remain same but change to factor variable.  
-summary(as.factor(sim_df$gpa))
+Top and/or bottom coding can be applied to continuous variables to protect the rare values in the tails of distributions. Values above or below a certain threshold are grouped together and recoded (e.g., ages 18+). Top/bottom coding is most useful when there are only a few individuals in the tails of the distribution or when direct linking is not a disclosure risk concern but you still want to protect rare responses. As always, deciding upon a threshold can be challenging and should take into account the distribution of the variable, disclosure scenarios, as well as the intended use of the variable (i.e., balance data utility). 
 
-#top/bottom code with sdcMicro code
+The first continuous variable, `gpa`, could be recoded into categorical intervals (e.g., 1-2; 3.67-4) or top/bottom coded. We will do the latter. Based on the risk assessment and thresholds specified above, we only need to bottom code `gpa` for values less than or equal to 1.33 (i.e., bottom 0.1%), however, we will bottom code values less than 2 to create more equal frequencies in the tails and add a little more protection for those with lower GPAs. 
 
-#top code
-tbcode_sdcobj <- topBotCoding(obj = initial_sdcobj, #initial object
-                               column = "gpa", #variable to top/bottom code
-                               value = 3, #number that will be top coded (>3 will be recoded)
-                               replacement = 3334, #number that will replace top coded values - has to be integer- tidy afterward
-                               kind = "top") #specify top or bottom coding
+Top and bottom coding can be completed in `{sdcMicro}` with the `topBotCoding()` function. We will use our `initial_sdcobj` sdcMicro object that we created above when assessing risk and will need to save the output to a new object that includes our bottom coded values (`tbcode_sdcobj`). We also need to to specify the `value` to top or bottom code (e.g., 2 = bottom codes values *less than* 2), as well as the `replacement` value that will be substituted for values above/below your threshold. The `replacement` value has to be an integer for initial recoding, but can be transformed to other complex values (e.g., `<2`) or factors/characters (e.g., `less than 2`) afterwards. Let's look at an example in which we are bottom coding `gpa` for values under 2 and replacing all values <2 with 1:
 
-#bottom code
-tbcode_sdcobj <- topBotCoding(obj = tbcode_sdcobj, #object you created above when top coding
-                               column = "gpa", 
-                               value = 2.33, #<2.33 will be recoded
-                               replacement = 12, 
-                               kind = "bottom") 
-
-#manual check
-summary(as.factor(sim_df$gpa))
-summary(as.factor(tbcode_sdcobj@manipNumVars$gpa))
+```{r bot-gpa}
+#bottom code gpa
+tbcode_sdcobj <- topBotCoding(obj = initial_sdcobj, #object you created above when top coding
+                              column = "gpa", #variable to top/bottom code
+                              value = 2, #number that will be bottom coded (<2 will be recoded)
+                              replacement = 1, #integer that will replace bottom coded values
+                              kind = "bottom") #specify top or bottom coding
 
 ```
 
-check continous variable distribution/freq and mention they could check cross tabs with demos 
+*Note*: It is important to always be mindful of the `replacement` value you choose and the sequence in which you complete top and bottom coding for a single variable. For example, if you bottom code values under a certain threshold (e.g., 2.33) and specify a large `replacement` value (e.g., 233), it is likely that those bottom coded values (now all 233) will also be recoded when top-coding (e.g., values > 3 now includes 233). Top coding values above 3 will now include 233 (all bottom coded values). It is necessary to select a smaller `replacement` value or complete top coding first to prevent this. 
 
-Discipline variables - highly skewed. 
+By running the code above, we are bottom coding `gpa` (from our initial `sdcMicro` object) for values under 2.33, recoding those values as 2s, and saving the variable in a new `sdcMicro` object. Every time a transformation is made to variables in the data set, the resulting modified data set is stored within the `sdcMicro` object (i.e., manipulated data) along with the raw data set (i.e., original data). At any point during the de-identification process, you can extract your manipulated data with `extractManipData()` or access it within the `sdcMicro` object (`tbcode_sdcobj@manipNumVars$gpa`). For example, we can compare the frequency tables of our raw data with the newly bottom coded values for `gpa`: 
 
-based on quantiles above, decided to topcode top 3% of students
+```{r gpa-raw-freq, eval = FALSE}
+#Raw data
+table(sim_df$gpa)
+```
 
+```{r gpa-raw-render, results = "asis", echo = FALSE}
+knitr::kable(t(table(sim_df$gpa))) %>% 
+  kableExtra::kable_styling(full_width = FALSE, position = "left")
+```
+
+```{r gpa-manip-freq, eval = FALSE}
+#Manipulated data
+table(tbcode_sdcobj@manipNumVars$gpa)
+```
+
+```{r gpa-manip-render, results = "asis", echo = FALSE}
+knitr::kable(t(table(tbcode_sdcobj@manipNumVars$gpa))) %>% 
+  kableExtra::kable_styling(full_width = FALSE, position = "left")
+```
+
+This step can be done as a manual check to make sure the top/bottom coding is operating as expected. 
+
+Since the discipline and attendance variables had such a high, positive skew, we only need to top code values above our threshold (i.e., top 1% while protecting cell sizes under 10). We can compute the value that makes up the top 1% of students with the same `quantile()` function from the risk assessment. For `iss_off`:
+
+```{r iss-top}
+#in school suspensions top 0.1%
+quantile(sim_df$iss_off, c(.999), na.rm = TRUE)
+```
+
+Although the top 0.1% of students correspond to values of 18 and higher, the frequency tables from the risk assessment show that values above 10 need to be protected since the frequency count for the value of 11 is below our cell size threshold of 10. Therefore, we will top code `iss_off` for values higher than 10 and replace it with 11. It is important to note that the first time we used top/bottom coding we used our initial `sdcMicro` object (`initial_sdcobj`), however, from here on we will want to use the most recent object that contains our transformed values. For example, when top coding `iss_off`, we will use the `tbcode_sdcobj` object to make further changes. Since we are still top/bottom coding, I will also save it to the same object (`tbcode_sdcobj`): 
+
+```{r top-code-issoff}
+#top code iss_off
+tbcode_sdcobj <- topBotCoding(obj = tbcode_sdcobj, #object created above when top/bottom coding gpa
+                              column = "iss_off",
+                              value = 10, #values 11+ are top coded
+                              replacement = 11,
+                              kind = "top")
+```
+
+This amount of top coding may be too much since we are taking away a lot of the variability in the tails of the distribution. If a main priority of the data is to answer questions about the amount of in school suspensions, especially at higher levels, you may want to consider changing the threshold for this variable or possibly considering a different type of release of adding more restrictions to protect privacy into a data sharing agreement. This is also the reason why it is so important to assess data utility after applying methods to de-identify data.
+
+We can repeat these steps for the other three continuous variables. For `iss_days` we will top code values above 13, and for `subj_off` and `days_absent` we will top code values above 13 and 38 respectively:
 
 ```{r disc-tbcode}
-#top code
-tbcode_sdcobj <- topBotCoding(obj = tbcode_sdcobj, #object created above when top/bottom coding gpa
-                               column = "iss_off",
-                               value = 2, #3 and up are top-coded
-                               replacement = 333,
-                               kind = "top")
+tbcode_sdcobj <- topBotCoding(obj = tbcode_sdcobj, #same top/bottom code object
+                              column = "iss_days",
+                              value = 13, 
+                              replacement = 14,
+                              kind = "top")
 
-tbcode_sdcobj <- topBotCoding(obj = tbcode_sdcobj, #object created above when top/bottom coding gpa
-                               column = "iss_days",
-                               value = 2, #3 and up are top-coded
-                               replacement = 333,
-                               kind = "top")
+tbcode_sdcobj <- topBotCoding(obj = tbcode_sdcobj,
+                              column = "subj_off",
+                              value = 13, 
+                              replacement = 14,
+                              kind = "top")
 
-tbcode_sdcobj <- topBotCoding(obj = tbcode_sdcobj, #object created above when top/bottom coding gpa
-                               column = "subj_off",
-                               value = 3, #4 and up are top-coded
-                               replacement = 444,
-                               kind = "top")
+tbcode_sdcobj <- topBotCoding(obj = tbcode_sdcobj, 
+                              column = "days_absent",
+                              value = 38, 
+                              replacement = 39,
+                              kind = "top")
 
 ```
 
@@ -110,48 +125,32 @@ tbcode_sdcobj <- topBotCoding(obj = tbcode_sdcobj, #object created above when to
 tbcode_sdcobj@manipNumVars
 ```
 
+## View initial suppression values for categorical variables
+
+To de-identify categorical variables, we will be using the *k*-anonymity privacy model with a *k* = 5. To achieve 5-anonymity, a balance of generalization and cell suppression can be used. Generalization refers to recoding or aggregating categorical variables, whereas cell suppression involves transforming certain values to missing. In practice, categorical variables are usually recoded before applying local suppression to reduce the amount of suppression needed. However, I find it helpful to first review the amount of cell suppression necessary to achieve *k*-anonymity with the raw variables before recoding. This will provide information on which variables are leading to high re-identification risk (e.g., variables with high cell suppression) and how much recoding should be completed.
+
+The `kAnon()` function in `{sdcMicro}` can be used to apply local suppression to achieve *k*-anonymity. Within this function, we can specify an `importance` vector which corresponds to the categorical variables in our data. This `importance` ranking specifies the amount of local suppression to do for each variable. For example, if the `importance` vector is `c(1, 2, 3)`, the first variable is the most important and will have the least cell suppression, whereas the last variable is least important and will most likely have the most cell suppression. This decision should be based off of which variables are most important to retain as raw as possible for analysis. If you do not specify an `importance` vector, the default is to make variables with more response options less important and thus have more cell suppression. 
+
+To view the amount of cell suppression needed to achieve 5-anonymity, we will use `kAnon()` on our initial `{sdcMicro}` object (`initial_sdcobj`). 
+
+**Warning:** depending on the sample size and amount of categorical variables, this function can be very computationally intensive - leading to long run times. It can be helpful to first run on a subset of the data before applying on the full sample to make sure you have enough computational power. 
 
 
-look at responses within equavalence classes if worried about risk
-
-IF EDITING DAYS ABSENT VAR - LESS RISKY AND SKEWED THAN DISCIPLINE -  ONLY WORRIED ABOUT PROTECTING THOSE WITH HIGH VALUES OF ABSENSES - MAYBE OVER A WEEK - TOPCODE THAT. 
-
-could use ranges, but for quickness we will just top code based on quantiles/frequencies and what makes sense (over 5 days/ 1 school week)
-
-```{r abs-tbcode}
-
-tbcode_sdcobj <- topBotCoding(obj = tbcode_sdcobj, #object created above when top/bottom coding gpa
-                               column = "days_absent",
-                               value = 5, #over 5 days are top-coded
-                               replacement = 666,
-                               kind = "top")
+```{r local-suppression}
+sdcobj_sup <- kAnon(initial_sdcobj, #initial object
+                    importance=c(1, 3, 2, 4, 5, 6, 7), #importance ranking for categorical variables
+                    k = c(5)) #k-anonymity value
 
 ```
 
-
-## View initial suppression values for categorical variables
-
-traditional methods remove all rows (13% of data) which reduces data utility and disportportioaltely affects minority subgroups
-
-runtime can be long - computationally intense - more so with more categorical variables and response options
-
-only categorical variables in sdcobject - can inlcude importance ranking
-
-using k anon with k of 5. # of k anon violations from above (inline code?)
-
-code that will take a while to run - WARNING - this takes a while, so be aware and maybe try a subset. caching will save version of object into local folder and access that cache when rerunning that chunk. be careful to not cache certain chunks. 
-
-- can skip step. 
-
-```{r local-suppression}
-sdcobj_sup <- kAnon(initial_sdcobj, #sdcMicro object we created above
-                    importance=c(1, 3, 2, 4, 5, 6, 7), #importance ranking for categorical keys - dafault is order based on # of response categories will be suppressed more
-                    k = c(5)) #k-anonymity value (k = 2)
-
+```{r local-suppression-rds, eval = FALSE, include = FALSE}
 #save RDS to import so this doesnt have to knit everytime? 
 ```
 
 View results
+
+explain local suppression
+traditional methods remove all rows (13% of data) which reduces data utility and disportportioaltely affects minority subgroups
 
 - look at number of suppressions (and %)
 
@@ -163,7 +162,12 @@ could keep this. not useful if people are interested in small language groups or
 
 ## Recode categorical variables
 
+privacy method - kanonymity (choosing k of 5 to be shared with researchers w/o FERPA exception but with DSA that stipulated data destruction - etc. other things that reduce risk)
+-recode before suppressions to reduce amount of suppression
+
 not dichotomous
+
+explain recoding/generalization
 
 ```{r freq, include = FALSE}
 #view levels and frequencies
@@ -196,9 +200,9 @@ sdcobj_recode <- groupAndRename(obj = sdcobj_recode, #use sdcobj_recode object y
 ```
 
 
-
-
 ## Local suppression for k-anonymity
+
+traditional methods remove all rows (13% of data) which reduces data utility and disportportioaltely affects minority subgroups
 
 ```{r k-anon-supp}
 
@@ -234,6 +238,8 @@ sdcobj_recode1 <- groupAndRename(obj = sdcobj_recode, #use sdcobj_recode object 
 
 Very briefly
 
+After applying SDC methods it is important to control for risk - reduce risk, then reassess and ASSESS DAT UTILIYT
+
 ### Categorical Variables
 
 k-anon vios and global risk reduction
@@ -249,7 +255,25 @@ we have achived k-anon for categorical variables with acceptable suppression. gl
 
 ### Continuous Variables
 
+check continous variable distribution/freq and mention they could check cross tabs with demos 
+
+look at responses within equavalence classes if worried about risk
+
+
+### A Posteriori Measures - or just mention in intro then talk about in reassess (last) section
+
+only for perturabtive measures does this make snese since we are not altering all values and majority will be same values - if direct linking is issue, need to make values categorical with ranges (or perturbative techniques)
+
+distnace/neighbor based measures (record linkage, interval measure)
+
+after anonymization - compares raw with transformed data
+
+later post describes how to compute and interpret interval measure
+
 distance based measures, outlier detection, small cell sizes when combined?
+
+- record linkage assumption; name and define the two types and how they work; 
+(distsnance based not relevant since we are not woried about direct linkage and not perturbing data - talked about before)
 
 ```{r numeric-risk-distanceinterval}
 sdcobj_final@risk$numeric
@@ -279,7 +303,7 @@ suggests we protected our outliers because changed 7 % when only top coding and 
 
 outlier detection less useful here becuase loss of variability/range in continuous variables. Can look at freq tables or distributions again to observe changes/assess acceptability
 
-```{r}
+```{r, eval = FALSE}
 table(anon_df$gpa)
 
 table(anon_df$iss_off)
@@ -302,5 +326,11 @@ orig data didnt have much relations to compare to since simulated for demonstrat
 regressions with raw and transformed data
 
 correlations
+
+could change gpa to intervals or categorical since already aggregated and , but since middle values have high freq - looks already factored - we will just top and bottom code this to make equal N groups. - may not be as useful to analyst if variable of interest. 
+-seems to already been binned/aggregated so that is already protected as we do not know the exact value for each student - could make sense to make categorical or top/bottom code (below 2, above 3.5 - although other categories seem categorical)
+-options - severe top code, bin into categories and treat as categorical to keep higher values, restrict access/share under FERPA exception
+-may need to rethink thresholds/data sharing agreements - The challenge is finding a balance between modifying the data to protect student privacy and making sure the data still stay useful for their intended purpose (e.g., data analysis). 
+
 
 ## Resources
