@@ -2,7 +2,12 @@
 title: "Assessing Disclsoure Risk"
 author: "Shaina Trevino"
 date: "2/26/2021"
-output: html_document
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: united
+    highlight: tango
 ---
 
 ```{r setup, include=FALSE}
@@ -100,15 +105,15 @@ Once you understand your data, the environment for release, and the variables th
 
 ## Set up the `{sdcMicro}` Object
 
-The first step of disclosure risk analysis in `{sdcMicro}` is to create an object that tells `R` which continuous and categorical variables should be considered indirect identifiers in your data set. This is implemented with the `createSdcObj()` function (as shown below) which results in a `{sdcMicro}` object with many different layers (e.g., original data, transformed data, risk/utility metrics, and many other configuration settings). Mostly everything that we do to assess risk and de-identify data will involve manipulating this object. 
+The first step of disclosure risk analysis in `{sdcMicro}` is to create an object that tells `R` which continuous and categorical variables should be considered indirect identifiers in your data set. This is implemented with the `createSdcObj()` function (as shown below) which results in a `{sdcMicro}` object with many different layers (e.g., original data, transformed data, risk/utility metrics, and many other configuration settings). Mostly everything that we do to assess risk and de-identify data will involve manipulating this object. For this function, the `keyVars` refer to the categorical indirect identifiers and `numVars` are the continuous indirect identifiers. 
 
 ```{r sdc-obj}
 #create object
 initial_sdcobj <- createSdcObj(dat = sim_df, #input data
                                keyVars = c("grade_level", "sex", "race", "econ_dis", 
-                                           "disability", "dis_cat", "lang"), #categorical indirect identifiers
+                                           "disability", "dis_cat", "lang"), #categorical
                                numVars = c("gpa", "iss_off", "iss_days", 
-                                           "subj_off", "days_absent")) #continuous indirect identifiers
+                                           "subj_off", "days_absent")) #continuous 
 
 ```
 
@@ -156,7 +161,7 @@ Global risk refers to the average re-identification risk of the entire data set.
 print(initial_sdcobj, "risk")
 ```
 
-The global risk is `r round(initial_sdcobj@originalRisk$global$risk, 4)`, indicating that a motivated intruder could potentially identify `r round(initial_sdcobj@originalRisk$global$risk_ER)` (`r round(initial_sdcobj@originalRisk$global$risk, 4) * 100`) of students , on average. This risk is very high, but is likely overestimated since we are not using sampling weights and thus assumes the intruder knows which individuals are included in the sample. The output also shows that 5395 students have individual risk metrics that are operating differently compared to the majority of individual risk metrics (e.g., lower or higher). I find this measure less helpful, but it is interesting that it is the same as the 10-anonymity violations we calculated. After applying statistical disclosure control methods, we expect to see the global risk metrics reduce - especially the expected number of re-identifications. 
+The global risk is `r round(initial_sdcobj@originalRisk$global$risk, 4)`, indicating that a motivated intruder could potentially identify `r round(initial_sdcobj@originalRisk$global$risk_ER)` (`r round(initial_sdcobj@originalRisk$global$risk, 4) * 100`%) of students , on average. This risk is very high, but is likely overestimated since we are not using sampling weights and thus assumes the intruder knows which individuals are included in the sample. The output also shows that 5395 students have individual risk metrics that are operating differently compared to the majority of individual risk metrics (e.g., lower or higher). I find this measure less helpful, but it is interesting that it is the same as the 10-anonymity violations we calculated. After applying statistical disclosure control methods, we expect to see the global risk metrics reduce - especially the expected number of re-identifications. 
 
 It is important to note that global risks should be not be given too much weight when assessing disclosure risk. Although global risk metrics are easy to compute, they are aggregate measures that don't take into account unique individuals in the data set. It is possible to have an acceptable global risk but still have unique or high risk individuals in the data set. Thus, investigating individual risk is important when assessing disclosure risk. We did this briefly when calculating *k*-anonymity violations, but will want to look at individual risk in more depth next. 
 

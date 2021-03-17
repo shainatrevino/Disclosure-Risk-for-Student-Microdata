@@ -30,8 +30,7 @@ initial_sdcobj <- createSdcObj(dat = sim_df, #input data
 
 Statistical disclosure control (SDC) is a process meant to de-identify data so that is can be archived or released. The aim is to find a balance between maximizing privacy protection and minimizing information loss so that the data is protected but still useful for analysis. SDC methods are used to achieve an appropriate level of disclosure risk by altering the data in various ways. Perturbative methods alter the values of continuous variables so that the "true" responses of individuals cannot be known but the statistical properties of the variable remain intact. These methods include adding statistical noise, Post-Randomization Method (PRAM), micro-aggregation, and shuffling. Non-perturbative methods reduce the level of detail among variables without altering the original values, such as global recoding, top/bottom coding continuous variables, and local suppression. Generating synthetic data that maintains the statistical properties and relations of the original data is also an acceptable SDC method. Both perturbative and non-perturbative methods can be implemented in `{sdcMicro}`, however, synthetic data generation requires other R packages (e.g., [simPop](https://www.jstatsoft.org/article/view/v079i10)) or software. 
 
-For this blog, we will be using non-perturbative SDC methods to reduce the amount of disclosure risk to an acceptable level in our data. Similar to assessing disclosure risk, different SDC methods are often used for continuous vs. categorical variables. As mentioned in previous sections, the desired level of disclosure risk is a complicated decision that should be decided by the data custodian, data providers, and based on any relevant legislative regulations. In our case, we will apply SDC methods to top/bottom code at least the top/bottom 0.1% of students while also protecting cell sizes smaller than 10 for continuous variables. For categorical variables, we will use SDC methods to achieve 5-anonymity. 
-
+For this blog, we will be using non-perturbative SDC methods to reduce the amount of disclosure risk to an acceptable level in our data. Similar to assessing disclosure risk, different SDC methods are often used for continuous vs. categorical variables. As mentioned in previous sections, the desired level of disclosure risk is a complicated decision that should be decided by the data custodian, data providers, and based on any relevant legislative regulations. In our case, we will apply SDC methods to top/bottom code at least the top/bottom 0.1% of students while also protecting cell sizes smaller than 10 for continuous variables. For categorical variables, we will use SDC methods to achieve 5-anonymity - assuming student data will be shared with researchers under a data sharing agreement but without a FERPA exception (i.e., fully de-identified). 
 
 ## Recode Continuous Variables
 
@@ -53,7 +52,7 @@ tbcode_sdcobj <- topBotCoding(obj = initial_sdcobj, #object you created above wh
 
 *Note*: It is important to always be mindful of the `replacement` value you choose and the sequence in which you complete top and bottom coding for a single variable. For example, if you bottom code values under a certain threshold (e.g., 2.33) and specify a large `replacement` value (e.g., 233), it is likely that those bottom coded values (now all 233) will also be recoded when top-coding (e.g., values > 3 now includes 233). Top coding values above 3 will now include 233 (all bottom coded values). It is necessary to select a smaller `replacement` value or complete top coding first to prevent this. 
 
-By running the code above, we are bottom coding `gpa` (from our initial `sdcMicro` object) for values under 2.33, recoding those values as 2s, and saving the variable in a new `sdcMicro` object. Every time a transformation is made to variables in the data set, the resulting modified data set is stored within the `sdcMicro` object (i.e., manipulated data) along with the raw data set (i.e., original data). At any point during the de-identification process, you can extract your manipulated data with `extractManipData()` or access it within the `sdcMicro` object (`tbcode_sdcobj@manipNumVars$gpa`). For example, we can compare the frequency tables of our raw data with the newly bottom coded values for `gpa`: 
+By running the code above, we are bottom coding `gpa` (from our initial `sdcMicro` object) for values under 2.33, recoding those values as 2s, and saving the variable in a new `sdcMicro` object. Every time a transformation is made to variables in the data set, the resulting modified data set is stored within the `sdcMicro` object (i.e., manipulated data) along with the raw data set (i.e., original data). At any point during the de-identification process, you can extract your manipulated data with `extractManipData()` or access it within the `sdcMicro` object (`tbcode_sdcobj@manipNumVars$gpa`). For example, to compare the frequency tables of our raw data with the newly bottom coded values for `gpa`: 
 
 ```{r gpa-raw-freq, eval = FALSE}
 #Raw data
@@ -125,13 +124,15 @@ tbcode_sdcobj <- topBotCoding(obj = tbcode_sdcobj,
 tbcode_sdcobj@manipNumVars
 ```
 
-## View initial suppression values for categorical variables
+## Initial Local Suppression for Categorical Variables
 
-To de-identify categorical variables, we will be using the *k*-anonymity privacy model with a *k* = 5. To achieve 5-anonymity, a balance of generalization and cell suppression can be used. Generalization refers to recoding or aggregating categorical variables, whereas cell suppression involves transforming certain values to missing. In practice, categorical variables are usually recoded before applying local suppression to reduce the amount of suppression needed. However, I find it helpful to first review the amount of cell suppression necessary to achieve *k*-anonymity with the raw variables before recoding. This will provide information on which variables are leading to high re-identification risk (e.g., variables with high cell suppression) and how much recoding should be completed.
+To de-identify categorical variables, we will be using the *k*-anonymity privacy model with a *k* = 5. To achieve 5-anonymity, a balance of generalization and cell suppression can be used. Generalization refers to recoding or aggregating categorical variables, whereas cell suppression involves transforming certain values to missing. Traditional SDC methods have used record suppression (i.e., removing risky rows from the data set) for de-identification, however, this disproportionately affects minority subgroups and can drastically decrease data utility. One of the advantages of using `{sdcMicro}` for non-perturbative SDC methods, is the ability to implement cell suppression (called local suppression in `{sdcMicro}`) in which an algorithm is used to identify the optimal value/responses to suppress to achieve *k*-anonymity instead of suppressing all rows that do not meet *k*-anonymity. 
+
+In practice, categorical variables are usually recoded before applying local suppression to reduce the amount of suppression needed. However, I find it helpful to first review the amount of cell suppression necessary to achieve *k*-anonymity with the raw variables before recoding. This will provide information on which variables are leading to high re-identification risk (e.g., variables with high cell suppression) and how much recoding should be completed.
 
 The `kAnon()` function in `{sdcMicro}` can be used to apply local suppression to achieve *k*-anonymity. Within this function, we can specify an `importance` vector which corresponds to the categorical variables in our data. This `importance` ranking specifies the amount of local suppression to do for each variable. For example, if the `importance` vector is `c(1, 2, 3)`, the first variable is the most important and will have the least cell suppression, whereas the last variable is least important and will most likely have the most cell suppression. This decision should be based off of which variables are most important to retain as raw as possible for analysis. If you do not specify an `importance` vector, the default is to make variables with more response options less important and thus have more cell suppression. 
 
-To view the amount of cell suppression needed to achieve 5-anonymity, we will use `kAnon()` on our initial `{sdcMicro}` object (`initial_sdcobj`). 
+To view the amount of cell suppression needed to achieve 5-anonymity, we will use `kAnon()` on our initial `{sdcMicro}` object (`initial_sdcobj`) and save it as a new object indicating it was suppressed (`sdcobj_sup`). 
 
 **Warning:** depending on the sample size and amount of categorical variables, this function can be very computationally intensive - leading to long run times. It can be helpful to first run on a subset of the data before applying on the full sample to make sure you have enough computational power. 
 
@@ -144,54 +145,70 @@ sdcobj_sup <- kAnon(initial_sdcobj, #initial object
 ```
 
 ```{r local-suppression-rds, eval = FALSE, include = FALSE}
-#save RDS to import so this doesnt have to knit everytime? 
+#decided to not save as rds and import in case other changes are made. Run time is not that bad.  
 ```
 
-View results
+The results of the local suppression are saved within our new `{sdcMicro}` object. To view the amount of suppression necessary to achieve 5-anonymity with our raw categorical variables, we just need to view our new object. This will give you a lot of information, but for now we will just focus on the amount of suppression applied. 
 
-explain local suppression
-traditional methods remove all rows (13% of data) which reduces data utility and disportportioaltely affects minority subgroups
-
-- look at number of suppressions (and %)
-
-```{r initial-results}
-print(sdcobj_sup)
+```{r initial-results, eval = FALSE}
+sdcobj_sup
 ```
 
-could keep this. not useful if people are interested in small language groups or disability categories. we will try to recode those to see if it will reduce suppression
 
-## Recode categorical variables
 
-privacy method - kanonymity (choosing k of 5 to be shared with researchers w/o FERPA exception but with DSA that stipulated data destruction - etc. other things that reduce risk)
--recode before suppressions to reduce amount of suppression
+```{r initial-results-sup-render, echo = FALSE}
+print(sdcobj_sup, type = "ls")
+```
 
-not dichotomous
+The above output presents the amount of cell suppression required per variable to achieve 5-anonymity based on our importance vector. For example, since we stated `grade_level` was the most important variable, it only has two responses that were suppressed (i.e., changed to missing). Alternatively, language has the most cell suppression (8.7% of responses) because it was specified as least important and it has the most response choices (9 options).  
 
-explain recoding/generalization
+Technically, you could export the manipulated data after this step and it could be considered de-identified (after re-assessing risk) since we top/bottom coded our continuous variables and achieved 5-anonymity with local suppression for categorical variables. However, we can reduce the amount of suppression needed to achieve *k*-anonymity and likely increase data utility by recoding our categorical variables before we apply local suppression.
 
-```{r freq, include = FALSE}
-#view levels and frequencies
-summary(fct_infreq(sim_df$race))
+These initial suppression results suggest that we can reduce the amount of suppression applied by recoding `lang` and `dis_cat` since those variables lead to the most cell suppression. It also makes intuitive sense to generalize those variables since they both have many response options. 
 
+## Recode Categorical Variables
+
+Global recoding, also called generalization or aggregation, combines multiple response options of a single variable into a single, new category. For example, grade level could be aggregated from its original values (e.g., 1st, 6th grade) to higher levels (e.g., Elementary, Middle) to reduce re-identification risk. Based on the importance of our variables and the initial suppression results, we will aggregate language (`lang`) and disability categories (`dis_cat`) to reduce our cell suppression. Deciding on how to aggregate variables can be very difficult and sometimes impossible while maintaining data utility (e.g., original dichotomous variables). Subject matter experts should be consulted when decided how to group variable response options. 
+
+In addition to consulting with subject matter experts, it can be helpful to look at frequency tables of responses per variable. Instead of using `table()`, we will use `summary()` so that we can get an ordered frequency table with the `fct_infreq` function: 
+
+
+```{r freq-lang}
+#ordered frequency table
+summary(fct_infreq(sim_df$lang))
+```
+
+Based on these frequencies, we decide to leave `English` and `Spanish` as single responses because those cell sizes are adequate. Since there is already an option for `Other` and the cell sizes for the other languages are much smaller, we will recode all other languages as `Other` - assuming analysts don't need this level of detail. This can be implemented with the `groupAndRename` function in `{sdcMicro}`. It is important to make sure to use the `{sdcMicro}` object we applied top/bottom coding to (`tbcode_sdcobj`) to apply the recoding to that same manipulated data set. We will save the results to a new object indicated it has been recoded (`sdcobj_recode`):  
+
+
+```{r recode-lang}
+sdcobj_recode <- groupAndRename(obj = tbcode_sdcobj, #use working object
+                                    var = "lang", #variable to recode
+                                    before = c("Other","Chinese", "Vietnamese", 
+                                               "Arabic", "Russian", "German", "Swahili"), #vector of responses to group
+                                    after = c("Other")) #name the new group
+
+```
+
+Similar to how we checked our recoding for continuous variables, you can check a frequency table of the manipulated variable to manually check the recoding operated as expected: 
+
+```{r lang-check}
+table(sdcobj_recode@manipKeyVars$lang)
+```
+
+Everything looks good! 
+
+Now, let's take a look at the frequencies for `dis_cat`: 
+
+```{r freq-discat}
 summary(fct_infreq(sim_df$dis_cat))
 ```
 
-recode vars from above suppression, based on research necessity. assume lang doesnt need this fine of detail for analysis, but keeping as much dis_cat as possible is best. 
+Although these cell sizes are pretty sparse and this variable lead to quite a bit of cell suppression to achieve 5-anonymity, it doesn't make conceptual sense to group many of these disability categories. If this variable was not central for data analysis, it may be best to exclude this variable from the request especially since there is a dichotomous disability variable. This would allow better data utility for the variables that are most important to answer the research questions. Assuming this variable is important for analysis, there are different ways to group the disability categories. You could group the ones with the smallest cell sizes and name the new category all options (e.g., `Autism` and `Emotional Disturbance`) or group the options that do make conceptual sense to group and then accept the level of suppression necessary to fully de-identify the data. 
 
-recode based on frequencies - english, spanish, other
+We will group `Developmental Delay` and `Intellectual Disability` given those are sometimes combined in analyses, but will leave the other responses as is. Another option is to combine `Emotional Disturbance` with `Other` since it has a small frequency, however, we will assume it is important to keep this separate even if it will lead to more cell suppression. We can use the same function as above to recode `dis_cat`: 
 
-if dis_cat was not helpful for analysis, suggest excluding that variable. If helpful talk with analysts to see what level of aggregation can be applied
-
-ID/DD then suppress whats left. 
-
-```{r recode-cat}
-#Recode lang
-sdcobj_recode <- groupAndRename(obj = tbcode_sdcobj, #use object with top bottom codes for continuous vars
-                                    var = "lang", #variable to recode
-                                    before = c("Other","Chinese", "Vietnamese", "Arabic", "Russian", "German", "Swahili"), #vector of variable raw variable levels
-                                    after = c("Other")) #name the new group for after recoding
-
-#Recode dis_cat
+```{r recode-discat}
 sdcobj_recode <- groupAndRename(obj = sdcobj_recode, #use sdcobj_recode object you made above
                                     var = "dis_cat",
                                     before = c("Developmental Delay","Intellectual Disability"),
@@ -202,108 +219,126 @@ sdcobj_recode <- groupAndRename(obj = sdcobj_recode, #use sdcobj_recode object y
 
 ## Local suppression for k-anonymity
 
-traditional methods remove all rows (13% of data) which reduces data utility and disportportioaltely affects minority subgroups
+Now that we have recoded our categorical variables, we can re-run the `kAnon()` function to see if our recoding reduced the amount of suppression necessary to achieve 5-anonymity. It is important to run this function on the object we saved the recoding to (`sdcobj_recode`): 
 
-```{r k-anon-supp}
+
+```{r k-anon-supp, results = FALSE}
 
 sdcobj_final <- kAnon(sdcobj_recode, #object we have been recoding
-                      importance=c(1, 3, 2, 4, 5, 6, 7), #importance ranking
-                      k = c(5)) #k-anonymity value (k = 5)
+                      importance=c(1, 3, 2, 4, 5, 6, 7), 
+                      k = c(5))
 
-print(sdcobj_final)
-
+sdcobj_final
 ```
 
-
-
-## Additional recoding of categorical variables - other options - to achieve acceptable suppression
-
-could keep going, try more recoding for dis_cat or maybe race, make language dichotomous or take out language variable to see if it makes substantial difference in suppression %s
-
-- tried with language dichotomous, didnt change much ( 1 supreesion for grade level; ~1% less suppression for last two vars - not worth it to not have spanish as option if keeping lang var - could remove completely)
-
-take row out for grade_level suppresion 2 if stop now since no other NA values (check)
-
-```{r}
-
-sdcobj_recode1 <- groupAndRename(obj = sdcobj_recode, #use sdcobj_recode object you made above
-                                var = "lang",
-                                before = c("Spanish", "Other"),
-                                after = c("Other")) 
-  
-
+```{r kanon-final-render, echo = FALSE}
+print(sdcobj_final, type = "ls")
 ```
 
-# Reassess Risk
+Unfortunately, our recoding did not seem to drastically reduce the amount of cell suppression. This is likely because we left a lot of detail in the `dis_cat` variable. However, it did reduce it a little bit (~2% less suppression for `lang`). At this point, you should decide whether you want to try additional recoding (or other SDC methods) to further reduce the amount of suppression applied or if this is an acceptable amount of suppression. We will assume this is an acceptable amount of suppression. 
 
-Very briefly
+Finally, we have top/bottom coded our continuous variables, recoded and applied local suppression to our categorical variables, and saved all of those transformations in our final object: `sdcobj_final`. In theory, we now have a de-identified data set (based on our thresholds) that we can extract from our `{sdcMicro}` object with the `extractManipData()` function: 
 
-After applying SDC methods it is important to control for risk - reduce risk, then reassess and ASSESS DAT UTILIYT
+```{r extract}
+anon_df <- extractManipData(sdcobj_final)
+```
+
+However, it is best practice to make sure that the data is adequately de-identified (i.e., re-assess re-identification risk with transformed data) and still useful for analysis before the SDC process is considered complete. 
+
+# Re-assessing Risk
+
+Once an acceptable amount of SDC is applied, it is best to re-assess re-identification risk to see how much the SDC methods reduced re-identification risk and make sure the data is fully de-identified based on our thresholds. 
+
+One important assumption of our *k*-anonymity privacy model is that missing values (`NA`) are treated as if they were any other value, as mentioned in the disclosure risk section. If a variable already has missing values, this is most likely not an issue because an intruder cannot know which values are truly missing vs. those that were suppressed for SDC. If a variable does not have missing values before de-identification, then rules around how to deal with small cell suppression for that variable should be created to protect against backward engineering that value. It is possible to infer a student's sex if you know that value was suppressed in an equivalence class of *k* = 5. For example, if there are four responses for [10th Grade, Male, White...] and one [10th Grade, NA, White] that was suppressed when applying SDC methods, it is obvious that this `NA` value is supposed to be Female - making this individual more identifiable. In our case, there was only 2 cell suppression for `grade_level` which did not have any missing values in our original data. Thus, it may be possible to infer these these 2 values based on the other responses in that equivalence class. If this a reasonable assumption, it may be worth excluding those 2 rows in the de-identified data set or modifying the SDC process to try to reduce these cell suppressions (e.g., more recoding, different importance vectors).
+
+Aside from checking our disclosure risk assumptions, we can re-assess and compare re-identification risk of the de-identified data with the original data set with the same risk assessment methods we used above. 
+
 
 ### Categorical Variables
 
-k-anon vios and global risk reduction
+For categorical variables, we can confirm that 5-anonymity has been achieved by re-calculating the number of observations violating *k*-anonymity. This can be done using the final `{sdcMicro}` object that contains our de-identified, or manipulated, data set. If our local suppression worked as expected, we should not have any observations violating 5-anonymity: 
+
+
+```{r kvio-final}
+print(sdcobj_final)
+```
+
+This output confirms that 5-anonymity has been achieved (i.e, 0 observations violating 5-anonymity in transformed data). It also shows the amount of observations that violated *k*-anonymity in our raw data for easy comparison. 
+
+Another helpful risk metric to compute when re-assessing re-identification risk is global risk. Although we did not specify any thresholds for an acceptable global risk metric, it is still helpful to calculate global risk to see how much we reduced average re-identification risk of categorical variables with our SDC methods:
 
 ```{r global-risk-final}
-#based off cat vars
 print(sdcobj_final, "risk")
 ```
 
-still a little high, might be suitable for release at the SUF level with restrictions
 
-we have achived k-anon for categorical variables with acceptable suppression. gloabl risk reduced, still high (require DSA with destruction and access requirements)
+The output shows that we did reduce average re-identification risk by about 7.5% by applying SDC methods. Our final, de-identified data set still has quite a high global risk (3.45%) indicating that, on average, an intruder could successfully identify about 863 students if they were motivated enough. Depending on the type of data release, this could still be considered acceptable (e.g., restricted-use file with data sharing agreement/restrictions) if you can assume that a "reasonable person" under the FERPA guidelines will not be a highly motivated intruder (for more information on intruder testing see this [brief report](https://www.ons.gov.uk/methodology/methodologytopicsandstatisticalconcepts/disclosurecontrol/guidanceonintrudertesting) from the Office for National Statistics). However, if global risk is considered too high still, more SDC methods could be applied or other restrictions could be stipulated (e.g., data access, destruction, storage, etc.).  
 
 ### Continuous Variables
 
-check continous variable distribution/freq and mention they could check cross tabs with demos 
+To re-assess risk of continuous variables, we can confirm that all outliers (e.g., values past our thresholds for continuous variables) have been adequately protected by looking at frequency tables. We did this above when first recoding `gpa` to make sure our code was operating as expected. We can use the same tables to make sure outliers are protected. Let's check `iss_off` this time: 
+```{r iss-manip-freq, eval = FALSE}
+#Manipulated data
+table(sdcobj_final@manipNumVars$iss_off)
+```
 
-look at responses within equavalence classes if worried about risk
+```{r iss-manip-render, results = "asis", echo = FALSE}
+knitr::kable(t(table(sdcobj_final@manipNumVars$iss_off))) %>% 
+  kableExtra::kable_styling(full_width = FALSE, position = "left")
+```
+
+This looks good! There are no values outside our thresholds for continuous variables (e.g., protect top 1% and cell sizes under 10). If desired, you can also compare histograms between the raw and transformed data, however, I find it more useful to look at the exact values in the table. In practice, you will want to check frequency tables for all continuous variables.
+
+If direct matching (e.g., ability to link variable other data based on the response) is a disclosure risk concern, it may also be helpful to look at cross/multi-tab frequency counts by student demographics with similar thresholds in mind or calculate distance-based risk metrics for these continuous variables. 
+
+#### A Posteriori Risk Measures 
+
+The two distance-based risk metrics calculated in `{sdcMicro}`, record linkage and interval measure, are more applicable for perturbative SDC methods in which all continuous values have been altered. Record linkage calculates the number of exact matches between original and transformed values (i.e., when original and transformed values are the same). Interval measures calculate the amount of observations that are outside a specified interval around the transformed values. Both metrics compare all transformed values to the original values. Since we used non-perturbative methods and only transformed the outliers of continuous variables, these metrics will be overestimated (i.e., the majority of values will match the original values) and not as useful. 
+
+Distance-based risk metrics are most useful when it is possible to exactly match values of a continuous variables with a person's identity or public registries with potentially identifiable information (e.g., voter registration). Further, if exact matching is a disclosure concern (more info [here](https://readthedocs.org/projects/sdcpractice/downloads/pdf/latest/) pg.26), other SDC methods may need to be used (e.g., perturbative methods or including the continuous variable in *k*-anonymity assessment) to adequately protect privacy and fully de-identify the data set.  
+
+We assumed that direct matching is not a disclosure risk concern when we decided that top/bottom coding could be used to protect all continuous variables. This means we think it is highly unlikely that a "reasonable person" will know or be able to match the exact number of discipline offenses for a student since those data are not publicly reported - which seems to be a reasonable assumption for our variables. Thus, we will not calculate distance-based risk measures. 
+
+If you want more information about perturbative methods, calculating distance-based risk measures, or SDC in general I would recommend the [guide](https://readthedocs.org/projects/sdcpractice/downloads/pdf/latest/) referenced above or Matthias Templ's [book](https://www.researchgate.net/publication/316991381_Statistical_Disclosure_Control_for_Microdata_Methods_and_Applications_in_R). Both implement SDC methods in R and utilize `{sdcMicro}` when applicable. 
 
 
-### A Posteriori Measures - or just mention in intro then talk about in reassess (last) section
-
-only for perturabtive measures does this make snese since we are not altering all values and majority will be same values - if direct linking is issue, need to make values categorical with ranges (or perturbative techniques)
-
-distnace/neighbor based measures (record linkage, interval measure)
-
-after anonymization - compares raw with transformed data
-
-later post describes how to compute and interpret interval measure
-
-distance based measures, outlier detection, small cell sizes when combined?
-
-- record linkage assumption; name and define the two types and how they work; 
-(distsnance based not relevant since we are not woried about direct linkage and not perturbing data - talked about before)
-
-```{r numeric-risk-distanceinterval}
+```{r numeric-risk-distanceinterval, eval = FALSE, include = FALSE}
 sdcobj_final@risk$numeric
 ```
 
-```{r num-risk}
+```{r num-risk, include = FALSE, eval = FALSE}
+#not applicable 0-99% range for metric since only top/bottom coded
 print(sdcobj_final, "numrisk")
+
+dRisk(obj = sdcobj_final@origData$gpa, xm = sdcobj_final@manipNumVars$gpa, k = 0.1)
 ```
 
-Above shows the percentage of observations that are within an interval centred on its recoded value. The upper bound (93.35%) represents a worse case scenario in which a motivated intruder knows each nearest value. This will be high since we only top coded most values to protect top __ % of students who were outliers. 
+```{r notes-for-further-post-distance-metrics, include = FALSE, eval = FALSE}
+# Above shows the percentage of observations that are within an interval centred on its recoded value. The upper bound (93.35%) represents a worse case scenario in which a motivated intruder knows each nearest value. This will be high since we only top coded most values to protect top __ % of students who were outliers. 
+# 
+# 
+# "they checkif the original value falls within an interval centered on the masked value. In this case, the
+# intervals are calculated based on the standard deviation of the variable under consideration."
+# 
+# 
+# suggests we protected our outliers because changed 7 % when only top coding and not changing other intervals, data utlity decreased drastically. 
+# 
+# 1sd of variable
+# 
+# 
+# 
+# 
+# "The result 1 indicates that all (100 percent) the original values are outside the interval of 0.1 times the standard deviation around the original values."
+# 
+# "The results are satisfactory, especially when keeping in mind that there are only 10 distinct values in the dataset (the means of each of the deciles). All outliers have been recoded. Looking at the proportions of the components, we do not detect any outliers (households with an unusual high or low spending pattern in one component)."
+# 
+# 
+# 
+# outlier detection less useful here becuase loss of variability/range in continuous variables. Can look at freq tables or distributions again to observe changes/assess acceptability
+```
 
 
-"they check
-if the original value falls within an interval centered on the masked value. In this case, the
-intervals are calculated based on the standard deviation of the variable under consideration."
-
-
-suggests we protected our outliers because changed 7 % when only top coding and not changing other intervals, data utlity decreased drastically. 
-
-1sd of variable
-
-"The result 1 indicates that all (100 percent) the observations are outside the interval of 0.1 times the standard deviation around the original values."
-
-"The results are satisfactory, especially when keeping in mind that there are only 10 distinct values in the dataset (the means of each of the deciles). All outliers have been recoded. Looking at the proportions of the components, we do not detect any outliers (households with an unusual high or low spending pattern in one component)."
-
-
-
-outlier detection less useful here becuase loss of variability/range in continuous variables. Can look at freq tables or distributions again to observe changes/assess acceptability
-
-```{r, eval = FALSE}
+```{r, eval = FALSE, include = FALSE}
 table(anon_df$gpa)
 
 table(anon_df$iss_off)
@@ -315,22 +350,34 @@ table(anon_df$subj_off)
 ```
 
 
-### Data Utility - same results with raw data
+### Data Utility 
 
-only explain without any code for now? 
+As you may have already noticed, SDC is a balance between protecting disclosure risk and maintaining data utility. Those using SDC methods should aim to decrease re-identification risk to an acceptable level while reducing information loss. Transformed data needs to remain useful for data analysis and produce valid results during analysis. To determine the right balance of utility and risk, it is necessary to measure the usefulness of the data after SDC methods have been applied. 
 
-orig data didnt have much relations to compare to since simulated for demonstration purposes. 
+Similar to deciding which risk metrics and SDC methods to use, deciding on how to measure data utility can be a complicated process. To adequately measure data utility, it is necessary to understand the end goal and users of the data set to determine which information is most important to preserve. The data set that we have been working with for this tutorial was generated to reproduce the distributions of risk in common administrative student data and does not have any analytic use or end users. Thus, it does not seem appropriate to measure the utility of this data set. 
 
+In practice, there are many different ways to measure data utility after de-identification:
 
++ Amount of missingness
 
-regressions with raw and transformed data
++ Number of responses modified
 
-correlations
++ Information loss/Eigenvalues (calculated in `{sdcMicro}`)
 
-could change gpa to intervals or categorical since already aggregated and , but since middle values have high freq - looks already factored - we will just top and bottom code this to make equal N groups. - may not be as useful to analyst if variable of interest. 
--seems to already been binned/aggregated so that is already protected as we do not know the exact value for each student - could make sense to make categorical or top/bottom code (below 2, above 3.5 - although other categories seem categorical)
--options - severe top code, bin into categories and treat as categorical to keep higher values, restrict access/share under FERPA exception
--may need to rethink thresholds/data sharing agreements - The challenge is finding a balance between modifying the data to protect student privacy and making sure the data still stay useful for their intended purpose (e.g., data analysis). 
++ Comparing contingency tables
 
++ Comparing descriptive statistics 
 
+Once you understand the intended goal of the data set, it is important to run statistical tests to make sure the conclusions from the transformed data are similar enough to those in the original data (e.g., correlations, regressions, etc.). Further, if any benchmark indicators (e.g., GINI index) or other important variables exist, it is also best to make sure these remain similar to the original values. More information can be found [here](https://sdcpractice.readthedocs.io/en/latest/utility.html#). It is helpful to understand how the data will be used before beginning the SDC process since it can guide the decisions you make when deciding how to recode or transform variables. 
+
+If after assessing data utility you determine the utility is too low, you may want to rethink the disclosure risk thresholds, type of release, or SDC methods used. It is also important to explain the results to the relevant collaborators (e.g., data provider, PI, end users, legal experts, etc.) to determine the best way to increase data utility while still adequately de-identifying the data set. 
+
+```{r add-resources, eval = FALSE, include = FALSE}
 ## Resources
+
+# -add all links here. 
+# 
+# Any others? 
+
+```
+
